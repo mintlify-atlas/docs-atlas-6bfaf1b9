@@ -1,0 +1,126 @@
+---
+title: "Self-host ChatsPeCharcha on your own server"
+description: "Step-by-step guide to deploying ChatsPeCharcha on your own server: install dependencies, configure environment variables, build the frontend, and manage the process."
+---
+
+Self-hosting ChatsPeCharcha gives you full control over your data and infrastructure. You run both the Express backend and — optionally — serve the compiled React frontend directly from the same Node.js process using Express's static file middleware. This guide walks you through everything from cloning the repository to keeping the server running in the background.
+
+## Prerequisites
+
+Before you begin, make sure the following are available on your server:
+
+- **Node.js 18 or later** — the backend uses ES module syntax (`"type": "module"`) and modern async features
+- **npm** — bundled with Node.js
+- **MongoDB** — either a local instance or a free MongoDB Atlas cluster
+
+<Note>
+  MongoDB Atlas is the quickest way to get a production-grade database without managing your own MongoDB instance. Create a free cluster at [mongodb.com/atlas](https://www.mongodb.com/atlas) and copy the connection string into your `MONGODB_URI` variable.
+</Note>
+
+## Deploy ChatsPeCharcha
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the project to your server and enter the root directory.
+
+    ```bash
+    git clone https://github.com/jatinpanday/chatsPeCharcha.git
+    cd chatsPeCharcha
+    ```
+  </Step>
+
+  <Step title="Install backend dependencies and configure the environment">
+    Move into the `backend/` directory, install production dependencies, and create your `.env` file.
+
+    ```bash
+    cd backend
+    npm install
+    cp .env.example .env
+    ```
+
+    Open `.env` and set at minimum the three required variables:
+
+    ```bash backend/.env
+    PORT=5001
+    MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/chatspecharcha
+    JWT_SECRET=your-very-long-random-secret-here
+    FRONTEND_URL=https://your-domain.com
+    NODE_ENV=production
+    ```
+
+    See the [Environment variables reference](/deployment/environment-variables) for a description of every available variable.
+  </Step>
+
+  <Step title="Install frontend dependencies and configure the environment">
+    From the `frontend/` directory, install dependencies and set the API base URL so the browser knows where to reach your backend.
+
+    ```bash
+    cd ../frontend
+    npm install
+    ```
+
+    ```bash frontend/.env
+    VITE_API_BASE_URL=https://your-domain.com
+    ```
+  </Step>
+
+  <Step title="Build the frontend">
+    Compile the React application into static files. Vite places the output in `frontend/dist/`.
+
+    ```bash
+    npm run build
+    ```
+
+    After the build completes, confirm the output directory exists:
+
+    ```bash
+    ls dist/
+    # assets/  index.html  ...
+    ```
+  </Step>
+
+  <Step title="Start the backend server">
+    Return to the `backend/` directory and start the server. With `NODE_ENV=production` set, Express automatically serves the files from `../frontend/dist` and falls back to `index.html` for any unmatched route, which is required for client-side routing to work correctly.
+
+    ```bash
+    cd ../backend
+    npm start
+    ```
+
+    You should see output similar to:
+
+    ```
+    server is running on PORT:5001
+    ✅ MongoDB connected: cluster0.mongodb.net
+    ```
+  </Step>
+
+  <Step title="Serve the frontend through the backend">
+    When `NODE_ENV` is set to `production`, the backend's `src/index.js` automatically activates two Express handlers:
+
+    ```js
+    // Serves built assets: JS, CSS, images
+    app.use(express.static(path.join(__dirname, "../frontend/dist")));
+
+    // Falls back to index.html for all unmatched routes (SPA routing)
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(__dirname, "../frontend", "dist", "index.html"));
+    });
+    ```
+
+    This means you only need one open port. Point your reverse proxy (nginx, Caddy, etc.) or DNS to `PORT` on the backend server, and both the API and the React UI are served from the same origin.
+  </Step>
+</Steps>
+
+<Tip>
+  Use [PM2](https://pm2.keymetrics.io/) to keep the backend process running after you close your SSH session and to automatically restart it on crashes or server reboots.
+
+  ```bash
+  npm install -g pm2
+  pm2 start src/index.js --name chatspecharcha
+  pm2 save
+  pm2 startup   # generates a startup command for your OS
+  ```
+
+  Run `pm2 logs chatspecharcha` to tail the server output at any time.
+</Tip>

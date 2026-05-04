@@ -1,23 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "ChatsPeCharcha",
+  "projectType": "saas",
+  "projectName": "ChatsPeCharcha",
+  "projectDescription": "A full-stack real-time chat application built with React, Node.js, Socket.io, and MongoDB, featuring user authentication, friend requests, and live messaging with typing indicators and read receipts.",
   "theme": "almond",
-  "colors": {
-    "primary": "#6366f1",
-    "light": "#e0e7ff",
-    "dark": "#3730a3"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/jatinpanday/chatsPeCharcha"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/jatinpanday/chatsPeCharcha"
-    }
-  },
+  "primaryColor": "#6366f1",
+  "lightColor": "#e0e7ff",
+  "darkColor": "#3730a3",
   "navigation": {
     "tabs": [
       {
@@ -97,5 +85,38 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Real-time messaging with Socket.io WebSockets",
+    "JWT-based user authentication with email verification",
+    "Friend request system with search, accept, and reject flows",
+    "Typing indicators and message read receipts",
+    "Online/offline presence tracking",
+    "Image upload support via Cloudinary",
+    "Responsive UI with dark/light mode using Tailwind CSS and Shadcn UI",
+    "Redux state management with React Query for data fetching"
+  ],
+  "publicApiSurface": [
+    "POST /api/auth/signup",
+    "POST /api/auth/login",
+    "POST /api/auth/logout",
+    "PUT /api/auth/update-profile",
+    "GET /api/auth/checkAuth",
+    "GET /api/message/users",
+    "GET /api/message/:id",
+    "POST /api/message/send/:id",
+    "GET /api/users/search",
+    "POST /api/users/request",
+    "GET /api/users/friends",
+    "GET /api/users/requests",
+    "PUT /api/users/requests/accept/:requestId",
+    "PUT /api/users/requests/reject/:requestId",
+    "Socket event: sendMessage",
+    "Socket event: receiveMessage",
+    "Socket event: typing",
+    "Socket event: userTyping",
+    "Socket event: messageSeen",
+    "Socket event: messageStatusUpdate",
+    "Socket event: getOnlineUsers"
+  ]
 }

@@ -1,0 +1,103 @@
+---
+title: "Real-time features: presence, typing, and delivery"
+description: "Documents the Socket.io-powered real-time features in ChatsPeCharcha: online presence indicators, typing indicators, live message delivery, and read receipts."
+---
+
+ChatsPeCharcha builds its real-time experience on a single persistent Socket.io connection that is established as soon as you log in. The server maintains an in-memory map of connected user IDs to socket IDs and uses it to route events directly to the right recipient without broadcasting to unrelated clients. Four capabilities run over this connection: online presence, typing indicators, message delivery, and read receipts.
+
+<CardGroup cols={2}>
+  <Card title="Online presence" icon="circle">
+    The server tracks which users are connected and broadcasts the full list of online user IDs whenever someone joins or leaves.
+  </Card>
+  <Card title="Typing indicators" icon="keyboard">
+    When you type in the message input, a `typing` event is emitted to your contact. A bouncing-dot animation appears on their end while you compose.
+  </Card>
+  <Card title="Real-time message delivery" icon="paper-plane">
+    Sent messages are pushed to the recipient's socket room via the `receiveMessage` event, delivering the message without a page refresh.
+  </Card>
+  <Card title="Read receipts" icon="eye">
+    When a recipient scrolls to the bottom of the conversation, a `messageSeen` event is sent back to the original sender to update the message status to `seen`.
+  </Card>
+</CardGroup>
+
+## Online presence
+
+When you connect to the socket server, your user ID (passed as `socket.handshake.query.userId`) is added to the `userSocketMap` object and you join a room named after your user ID. The server then emits the `getOnlineUsers` event to **all connected clients** with the current array of online user IDs:
+
+```javascript
+// Server emits on every connect and disconnect
+io.emit("getOnlineUsers", Object.keys(userSocketMap));
+```
+
+The client listens for `getOnlineUsers` and stores the list in the Redux `chatSlice` under `onlineUsers`. The sidebar uses this list to show a green presence dot next to contacts who are currently connected.
+
+When you disconnect, your entry is removed from `userSocketMap` and `getOnlineUsers` is broadcast again so every other client updates immediately.
+
+## Typing indicators
+
+The typing indicator uses two events: `typing` (client → server) and `userTyping` (server → recipient).
+
+**How it works:**
+
+1. When you start typing in the `MessageInput` field, the dashboard emits a `typing` event with `{ receiverId, isTyping: true }`.
+2. The server looks up the recipient's socket ID and forwards a `userTyping` event to them with `{ senderId, isTyping, receiverId, timestamp }`.
+3. The recipient's `Dashboard` listens for `userTyping` and dispatches `setTypingStatus` to the Redux store.
+4. The `ChatMessages` component reads `typingUsers[selectedChatId]` from the store and renders the animated bouncing-dot bubble when it is `true`.
+5. After **2 seconds of inactivity**, the client automatically emits `typing` with `isTyping: false`, and the recipient's typing bubble disappears.
+
+```javascript
+// Client emits when you start typing
+socket.emit("typing", { receiverId: selectedChatId, isTyping: true });
+
+// Server forwards to recipient
+socket.to(receiverSocketId).emit("userTyping", { senderId, isTyping, receiverId, timestamp });
+```
+
+The server skips the typing start event if the recipient is offline, since there is no socket room to deliver to. Typing stop events are still processed to clear any residual state.
+
+## Real-time message delivery
+
+When you send a message, the client emits a `sendMessage` event directly over the socket. The server handles this event, routes the message to the recipient's socket room, and acknowledges the sender:
+
+```javascript
+// Client emits to send a message
+socket.emit("sendMessage", {
+  senderId: user._id,
+  receiverId: selectedChatId,
+  message: messageText,
+  tempId
+}, (response) => {
+  // response.success indicates server acknowledgment
+});
+
+// Server pushes to recipient
+io.to(receiverSocketId).emit("receiveMessage", messageObj);
+
+// Server confirms delivery to sender
+io.to(senderSocketId).emit("messageSent", { ...messageObj, tempId });
+io.to(senderSocketId).emit("messageStatusUpdate", { messageId, status: "delivered", tempId });
+```
+
+The client listens for `receiveMessage` and dispatches `addMessage` to the Redux store, which inserts the incoming message into the correct conversation and re-sorts by timestamp. A duplicate check prevents the same message from appearing twice if it arrives via both the socket and an API refetch.
+
+The REST endpoint `POST /api/messages/send` also emits a `newMessage` event for cases where the message is sent via HTTP rather than directly over the socket.
+
+## Read receipts
+
+When `ChatMessages` detects that the last message in a conversation is from the other user and has not yet been marked `seen`, it emits a `messageSeen` event and optimistically updates the local status:
+
+```javascript
+// Client emits when the recipient reads the message
+socket.emit("messageSeen", {
+  messageId: lastMessage._id,
+  senderId: lastMessage.senderId,
+  receiverId: currentUser._id
+});
+
+// Server forwards to the original sender
+io.to(receiverSocketId).emit("messageSeen", { messageId });
+```
+
+The original sender listens for the `messageSeen` event and calls `updateMessageStatus` to change the message status from `delivered` to `seen`. In the `ChatMessages` UI, the status indicator updates to `✓✓👁️`.
+
+This event fires automatically as a side effect of the scroll-to-bottom `useEffect` in `ChatMessages`, so receipts are sent without any user action beyond opening the conversation.

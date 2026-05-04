@@ -1,0 +1,139 @@
+---
+title: 'Backend architecture and server structure'
+description: 'Explore the Express server setup, route organisation, Mongoose data models, auth middleware, and Socket.io integration that power the ChatsPeCharcha backend API.'
+---
+
+The ChatsPeCharcha backend is a Node.js application built on Express. It serves a REST API over three route groups, persists data in MongoDB through three Mongoose models, and exposes a Socket.io server for real-time communication. All entry-point bootstrapping happens in `src/index.js`, while the shared Express app and HTTP server instance are created in `src/lib/socket.js`.
+
+## Directory structure
+
+```
+backend/src/
+├── controllers/    # Route handlers
+├── lib/            # Utilities (db, socket, cloudinary)
+├── middleware/     # Auth middleware
+├── models/         # Mongoose models
+├── routes/         # Express route definitions
+└── index.js        # Server entry point
+```
+
+<Note>
+  The Express `app` and Node.js `http.Server` objects are created in `lib/socket.js` — not in `index.js` — so the Socket.io instance can attach to the same server before any middleware or routes are registered. `index.js` imports `{ app, server }` from that file.
+</Note>
+
+## Express server setup
+
+`src/index.js` configures middleware, mounts routes, and starts the server:
+
+```js
+import { app, server } from './lib/socket.js';
+
+app.use(express.json());
+app.use(cookieParser());
+app.use(cors({
+  origin: process.env.FRONTEND_URL,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  credentials: true
+}));
+
+app.use("/api/auth", authRoutes);
+app.use("/api/message", messageRoutes);
+app.use("/api/users", friendRequestRoutes);
+
+server.listen(PORT, () => {
+  connectDB();
+});
+```
+
+In production mode the server also serves the compiled frontend bundle from `../frontend/dist`.
+
+## Route organisation
+
+The API exposes three route groups, each protected (where required) by the `protectRoute` middleware that validates the JWT cookie.
+
+### `/api/auth`
+
+Handles user identity and profile management.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/signup` | Public | Register a new user |
+| `POST` | `/login` | Public | Authenticate and receive a JWT in the response body |
+| `POST` | `/logout` | Public | Clear the `jwt` cookie (also clear client-stored token) |
+| `PUT` | `/update-profile` | Required | Update avatar via Cloudinary |
+| `GET` | `/checkAuth` | Required | Return the current user object |
+
+### `/api/message`
+
+Handles conversation data.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/users` | Required | List contacts for the sidebar |
+| `GET` | `/:id` | Required | Fetch messages with a specific user |
+| `POST` | `/send/:id` | Required | Persist and broadcast a new message |
+
+### `/api/users`
+
+Handles friend relationships.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/search` | Required | Search users by email |
+| `POST` | `/request` | Required | Send a friend request |
+| `GET` | `/friends` | Required | List accepted friends |
+| `GET` | `/requests` | Required | List pending friend requests |
+| `PUT` | `/requests/accept/:requestId` | Required | Accept a friend request |
+| `PUT` | `/requests/reject/:requestId` | Required | Reject a friend request |
+
+## MongoDB models
+
+### User
+
+Stores account credentials and profile data.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `fullName` | String | Required |
+| `email` | String | Required, unique, lowercase |
+| `password` | String | Required (hashed) |
+| `profilePic` | String | URL, defaults to a placeholder avatar |
+| `isVerified` | Boolean | Email verification flag, default `false` |
+| `verificationToken` | String | One-time email verification token |
+| `verificationTokenExpires` | Date | Token expiry timestamp |
+| `passwordResetToken` | String | One-time password-reset token |
+| `passwordResetExpires` | Date | Token expiry timestamp |
+| `createdAt` / `updatedAt` | Date | Added by `timestamps: true` |
+
+### Message
+
+Records a single chat message between two users.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `senderId` | ObjectId | Ref: `User`, required |
+| `receiverId` | ObjectId | Ref: `User`, required |
+| `text` | String | Optional text content |
+| `image` | String | Optional Cloudinary image URL |
+| `createdAt` / `updatedAt` | Date | Added by `timestamps: true` |
+
+### FriendRequest
+
+Tracks the status of a connection request between two users.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `sender` | ObjectId | Ref: `User`, required |
+| `recipient` | ObjectId | Ref: `User`, required |
+| `status` | String | Enum: `pending`, `accepted`, `rejected`; default `pending` |
+| `createdAt` / `updatedAt` | Date | Added by `timestamps: true` |
+
+A partial unique index on `{ sender, recipient }` (where `status = 'pending'`) prevents duplicate pending requests between the same pair of users.
+
+## Services and middleware
+
+**`lib/db.js`** — Exports `connectDB`, which calls `mongoose.connect` using `MONGODB_URI` from the environment. The function is called inside the `server.listen` callback so the database is available before the server accepts traffic.
+
+**`lib/socket.js`** — Creates the Express app, HTTP server, and Socket.io instance, then exports `{ io, app, server }`. This is also where all socket event handlers live. See the [WebSockets page](/architecture/websockets) for the full event reference.
+
+**`middleware/auth.middleware.js`** — `protectRoute` reads the JWT from the `Authorization: Bearer <token>` header, verifies it against `JWT_SECRET`, attaches the matching `User` document to `req.user`, and calls `next()` — or returns a 401 response if the token is missing, invalid, or expired.

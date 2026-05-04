@@ -1,0 +1,88 @@
+---
+title: 'POST /api/auth/signup — Register a new user'
+description: 'Create a new ChatsPeCharcha account with a full name, email, and password. Returns a JWT token and user profile on success. Password must be at least 6 characters.'
+---
+
+Register a new user account. On success, the server returns a JWT alongside the new user's profile data. You must include this token as a Bearer token in the `Authorization` header for all protected endpoints. Passwords are hashed with bcrypt before storage and are never returned in any response.
+
+```
+POST /api/auth/signup
+```
+
+## Authentication
+
+None required. This endpoint is publicly accessible.
+
+## Request body
+
+<ParamField body="fullName" type="string" required>
+  The user's display name. Stored as-is and shown to other users in conversations.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  The user's email address. Must be unique across all accounts. Stored in lowercase.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The account password. Must be at least 6 characters. Hashed with bcrypt (salt rounds: 10) before storage.
+</ParamField>
+
+## Response
+
+Returns `201 Created` with the new user object and a signed JWT on success.
+
+<ResponseField name="_id" type="string" required>
+  MongoDB ObjectId for the new user document.
+</ResponseField>
+
+<ResponseField name="fullName" type="string" required>
+  The full name provided at registration.
+</ResponseField>
+
+<ResponseField name="email" type="string" required>
+  The email address provided at registration.
+</ResponseField>
+
+<ResponseField name="token" type="string" required>
+  A signed JWT valid for 7 days. Pass this as `Authorization: Bearer <token>` on protected requests.
+</ResponseField>
+
+<ResponseField name="message" type="string" required>
+  Confirmation string. Value: `"User registered successfully"`.
+</ResponseField>
+
+<Note>
+  New accounts have `isVerified: false` by default. Email verification may be required before you can send messages, depending on server configuration.
+</Note>
+
+## Example
+
+```bash
+curl -X POST https://your-api.com/api/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fullName": "Jane Doe",
+    "email": "jane@example.com",
+    "password": "securepassword"
+  }'
+```
+
+```json
+{
+  "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+  "fullName": "Jane Doe",
+  "email": "jane@example.com",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "message": "User registered successfully"
+}
+```
+
+## Error responses
+
+| Status | Message | Cause |
+|--------|---------|-------|
+| `400` | `"All fields are required"` | One or more of `fullName`, `email`, or `password` is missing from the request body. |
+| `400` | `"Password must be at least 6 characters"` | The supplied password is fewer than 6 characters. |
+| `400` | `"Email already exists"` | An account with this email address is already registered. |
+| `400` | `"Invalid user data"` | The user document could not be constructed from the provided data. |
+| `500` | `"Internal Server Error"` | An unexpected server-side error occurred. |

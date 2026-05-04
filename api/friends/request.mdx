@@ -1,0 +1,271 @@
+---
+title: 'Friend requests — send, list, and view friends'
+description: 'Send a friend request by email, retrieve pending incoming requests, and list your accepted friends. All endpoints require a JWT Bearer token for authentication.'
+---
+
+These three endpoints cover the core of the friend request lifecycle: sending a new request, viewing requests others have sent to you, and retrieving your full accepted friends list. All endpoints require a valid JWT Bearer token. Use [GET /api/users/search](/api/friends/search) to find a user's email before sending a request.
+
+## Authentication
+
+Required for all endpoints on this page. Pass the JWT returned at login as a Bearer token in the `Authorization` header. Requests without a valid token return `401 Unauthorized`.
+
+```
+Authorization: Bearer <token>
+```
+
+---
+
+<AccordionGroup>
+
+  <Accordion title="POST /api/users/request — Send a friend request" defaultOpen={true}>
+
+    Send a friend request to another user by their email address. The server checks for duplicate requests and existing friendships before creating a new request. A notification email is sent to the recipient when the request is created.
+
+    ```
+    POST /api/users/request
+    ```
+
+    ### Request body
+
+    <ParamField body="recipientEmail" type="string" required>
+      The email address of the user you want to add as a friend. The account must exist and must not be your own.
+    </ParamField>
+
+    ### Response
+
+    Returns `201 Created` with a `message` and the populated `request` object on success.
+
+    <ResponseField name="message" type="string" required>
+      Confirmation string. Value: `"Friend request sent"`.
+    </ResponseField>
+
+    <ResponseField name="request" type="object" required>
+      The newly created friend request document.
+      <Expandable title="request properties">
+        <ResponseField name="_id" type="string" required>
+          MongoDB ObjectId for this friend request.
+        </ResponseField>
+        <ResponseField name="sender" type="object" required>
+          Populated sender user object.
+          <Expandable title="sender properties">
+            <ResponseField name="_id" type="string" required>
+              Sender's MongoDB ObjectId.
+            </ResponseField>
+            <ResponseField name="fullName" type="string" required>
+              Sender's display name.
+            </ResponseField>
+            <ResponseField name="email" type="string" required>
+              Sender's email address.
+            </ResponseField>
+            <ResponseField name="profilePic" type="string" required>
+              URL of the sender's profile picture.
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        <ResponseField name="recipient" type="object" required>
+          Populated recipient user object with the same fields as `sender`.
+        </ResponseField>
+        <ResponseField name="status" type="string" required>
+          Always `"pending"` on creation.
+        </ResponseField>
+        <ResponseField name="createdAt" type="string" required>
+          ISO 8601 timestamp of when the request was created.
+        </ResponseField>
+        <ResponseField name="updatedAt" type="string" required>
+          ISO 8601 timestamp of the last update to the request.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    ### Example
+
+    ```bash
+    curl -X POST https://your-api.com/api/users/request \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer your-jwt-token" \
+      -d '{"recipientEmail": "jane@example.com"}'
+    ```
+
+    ```json
+    {
+      "message": "Friend request sent",
+      "request": {
+        "_id": "65a3b4c5d6e7f8a9b0c1d2e3",
+        "sender": {
+          "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+          "fullName": "Alex Smith",
+          "email": "alex@example.com",
+          "profilePic": "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+        },
+        "recipient": {
+          "_id": "64f1a2b3c4d5e6f7a8b9c0d2",
+          "fullName": "Jane Doe",
+          "email": "jane@example.com",
+          "profilePic": "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+        },
+        "status": "pending",
+        "createdAt": "2024-03-15T11:00:00.000Z",
+        "updatedAt": "2024-03-15T11:00:00.000Z"
+      }
+    }
+    ```
+
+    ### Error responses
+
+    | Status | Message | Cause |
+    |--------|---------|-------|
+    | `400` | `"Friend request already sent to this user"` | You already have a pending request to this user. |
+    | `400` | `"This user has already sent you a friend request"` | The recipient already sent you a pending request — accept it instead. |
+    | `400` | `"You are already friends with this user"` | An accepted friendship already exists between you and this user. |
+    | `400` | `"Cannot send request to yourself"` | The `recipientEmail` matches your own account. |
+    | `401` | `"Unauthorized"` | No valid Bearer token was included in the `Authorization` header. |
+    | `404` | `"User not found"` | No account with the given email address exists. |
+    | `500` | `"Server error"` | An unexpected server-side error occurred. |
+
+  </Accordion>
+
+  <Accordion title="GET /api/users/requests — Get pending friend requests">
+
+    Retrieve all pending friend requests that other users have sent to you. Results are sorted with the most recent request first. Use [PUT /api/users/requests/accept/:requestId](/api/friends/manage) or [PUT /api/users/requests/reject/:requestId](/api/friends/manage) to act on each request.
+
+    ```
+    GET /api/users/requests
+    ```
+
+    ### Response
+
+    Returns `200 OK` with a `success` flag and a `data` array of pending request objects.
+
+    <ResponseField name="success" type="boolean" required>
+      `true` when the request completed without errors.
+    </ResponseField>
+
+    <ResponseField name="data" type="object[]" required>
+      Array of pending friend request objects sent to you, sorted by `createdAt` descending.
+      <Expandable title="Request object properties">
+        <ResponseField name="_id" type="string" required>
+          MongoDB ObjectId for the friend request. Use this as `requestId` when accepting or rejecting.
+        </ResponseField>
+        <ResponseField name="sender" type="object" required>
+          Populated user object for the person who sent the request.
+          <Expandable title="sender properties">
+            <ResponseField name="_id" type="string" required>
+              Sender's MongoDB ObjectId.
+            </ResponseField>
+            <ResponseField name="fullName" type="string" required>
+              Sender's display name.
+            </ResponseField>
+            <ResponseField name="email" type="string" required>
+              Sender's email address.
+            </ResponseField>
+            <ResponseField name="profilePic" type="string" required>
+              URL of the sender's profile picture.
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        <ResponseField name="status" type="string" required>
+          Always `"pending"` in this response.
+        </ResponseField>
+        <ResponseField name="createdAt" type="string" required>
+          ISO 8601 timestamp of when the request was created.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    ### Example
+
+    ```bash
+    curl -X GET https://your-api.com/api/users/requests \
+      -H "Authorization: Bearer your-jwt-token"
+    ```
+
+    ```json
+    {
+      "success": true,
+      "data": [
+        {
+          "_id": "65a3b4c5d6e7f8a9b0c1d2e3",
+          "sender": {
+            "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+            "fullName": "Alex Smith",
+            "email": "alex@example.com",
+            "profilePic": "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+          },
+          "status": "pending",
+          "createdAt": "2024-03-15T11:00:00.000Z"
+        }
+      ]
+    }
+    ```
+
+    ### Error responses
+
+    | Status | Message | Cause |
+    |--------|---------|-------|
+    | `401` | `"Unauthorized"` | No valid Bearer token was included in the `Authorization` header. |
+    | `500` | `"Server error"` | An unexpected server-side error occurred. |
+
+  </Accordion>
+
+  <Accordion title="GET /api/users/friends — Get accepted friends list">
+
+    Retrieve all users who have an accepted friendship with you. The list includes friends regardless of whether you sent or received the original request. Each friend object also includes a `friendshipId` — the `_id` of the underlying `FriendRequest` document — which you can use to reference the friendship record.
+
+    ```
+    GET /api/users/friends
+    ```
+
+    ### Response
+
+    Returns `200 OK` with an array of friend objects.
+
+    <ResponseField name="[]" type="object[]">
+      Array of friend user objects.
+      <Expandable title="Friend object properties">
+        <ResponseField name="_id" type="string" required>
+          Friend's MongoDB ObjectId.
+        </ResponseField>
+        <ResponseField name="fullName" type="string" required>
+          Friend's display name.
+        </ResponseField>
+        <ResponseField name="email" type="string" required>
+          Friend's email address.
+        </ResponseField>
+        <ResponseField name="profilePic" type="string" required>
+          URL of the friend's profile picture.
+        </ResponseField>
+        <ResponseField name="friendshipId" type="string" required>
+          The `_id` of the `FriendRequest` document that represents this friendship.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    ### Example
+
+    ```bash
+    curl -X GET https://your-api.com/api/users/friends \
+      -H "Authorization: Bearer your-jwt-token"
+    ```
+
+    ```json
+    [
+      {
+        "_id": "64f1a2b3c4d5e6f7a8b9c0d2",
+        "fullName": "Jane Doe",
+        "email": "jane@example.com",
+        "profilePic": "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+        "friendshipId": "65a3b4c5d6e7f8a9b0c1d2e3"
+      }
+    ]
+    ```
+
+    ### Error responses
+
+    | Status | Message | Cause |
+    |--------|---------|-------|
+    | `401` | `"Unauthorized"` | No valid Bearer token was included in the `Authorization` header. |
+    | `500` | `"Server error"` | An unexpected server-side error occurred. |
+
+  </Accordion>
+
+</AccordionGroup>

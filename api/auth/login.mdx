@@ -1,0 +1,85 @@
+---
+title: 'POST /api/auth/login — Authenticate an existing user'
+description: 'Sign in with your email and password to receive a JWT token and user profile. The token expires after 7 days and must be sent as a Bearer header on protected requests.'
+---
+
+Authenticate an existing user account with an email and password. On success, the server verifies the password against the stored bcrypt hash and returns a signed JWT alongside the user's profile. Store the token and include it as a Bearer token in the `Authorization` header for all protected endpoints.
+
+```
+POST /api/auth/login
+```
+
+## Authentication
+
+None required. This endpoint is publicly accessible.
+
+## Request body
+
+<ParamField body="email" type="string" required>
+  The email address associated with the account.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The account password. Compared against the stored bcrypt hash.
+</ParamField>
+
+## Response
+
+Returns `200 OK` with the user object and a signed JWT on success.
+
+<ResponseField name="_id" type="string" required>
+  MongoDB ObjectId for the user document.
+</ResponseField>
+
+<ResponseField name="fullName" type="string" required>
+  The user's registered display name.
+</ResponseField>
+
+<ResponseField name="email" type="string" required>
+  The user's email address.
+</ResponseField>
+
+<ResponseField name="profilePic" type="string" required>
+  URL of the user's profile picture. Defaults to a placeholder avatar if not set.
+</ResponseField>
+
+<ResponseField name="token" type="string" required>
+  A signed JWT valid for 7 days. Pass this as `Authorization: Bearer <token>` on protected requests.
+</ResponseField>
+
+<ResponseField name="message" type="string" required>
+  Confirmation string. Value: `"Login successful"`.
+</ResponseField>
+
+<Warning>
+  The server returns the same `"Invalid email or password"` message for both an unrecognised email and a wrong password. This prevents user enumeration.
+</Warning>
+
+## Example
+
+```bash
+curl -X POST https://your-api.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "jane@example.com",
+    "password": "securepassword"
+  }'
+```
+
+```json
+{
+  "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+  "fullName": "Jane Doe",
+  "email": "jane@example.com",
+  "profilePic": "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "message": "Login successful"
+}
+```
+
+## Error responses
+
+| Status | Message | Cause |
+|--------|---------|-------|
+| `400` | `"Invalid email or password"` | No account found for the given email, or the password does not match. |
+| `500` | `"Internal Server Error"` | An unexpected server-side error occurred. |

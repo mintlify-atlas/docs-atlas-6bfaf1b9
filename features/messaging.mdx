@@ -1,0 +1,75 @@
+---
+title: "Messaging: Send and receive messages in real time"
+description: "How to use the ChatsPeCharcha chat UI: start conversations, send text and image messages, and track message status from sending through delivered to seen."
+---
+
+ChatsPeCharcha's messaging experience centers on a two-panel dashboard: a sidebar on the left lists your friends and lets you search contacts, while the main area on the right shows the selected conversation with a scrollable message list and a message input bar at the bottom. Every message you send travels over Socket.io for instant delivery, with the REST API persisting it to MongoDB so the history is available when you reload.
+
+## Dashboard layout
+
+The dashboard is composed of four primary UI components:
+
+| Component | Purpose |
+|---|---|
+| **Sidebar** (`Sidebar`) | Lists your friends (contacts), shows online status, and hosts the search input and friend-management dialogs. |
+| **ChatHeader** (`ChatHeader`) | Displays the selected contact's name, avatar, and online indicator at the top of the main area. |
+| **ChatMessages** (`ChatMessages`) | A scrollable message list that renders each message bubble, timestamps, and the typing indicator. |
+| **MessageInput** (`MessageInput`) | A text input bar at the bottom with a send button; supports pressing **Enter** to send. |
+
+## Starting a conversation
+
+You can only message contacts who are already in your friends list. Once you have at least one friend, a conversation is ready.
+
+<Steps>
+  <Step title="Open the dashboard">
+    Navigate to `/dashboard`. The sidebar automatically loads your friends list. If you have friends, the first contact is selected by default.
+  </Step>
+  <Step title="Select a contact">
+    Click any name in the sidebar to open that conversation. The main area refreshes to show the message history between you and that contact.
+  </Step>
+  <Step title="Search for a contact">
+    Use the search input at the top of the sidebar to filter your contacts by name. Matching results update in real time as you type.
+  </Step>
+  <Step title="Type your message">
+    Click into the **MessageInput** text field and start typing. A typing indicator is sent to your contact while you compose.
+  </Step>
+  <Step title="Send the message">
+    Press **Enter** (without Shift) or click the send button. The message appears immediately in the chat bubble list with a `sending` status indicator while the socket acknowledgment comes back.
+  </Step>
+</Steps>
+
+## Sending text and image messages
+
+The `sendMessage` backend controller accepts both `text` and `image` in the request body. Text is stored as-is. If an image is included, the controller uploads it to Cloudinary before saving the returned `secure_url` to the `Message` document.
+
+```json
+// Message document shape (MongoDB)
+{
+  "senderId": "<ObjectId>",
+  "receiverId": "<ObjectId>",
+  "text": "Hey! How are you?",
+  "image": "https://res.cloudinary.com/...",
+  "createdAt": "2026-05-04T10:00:00.000Z"
+}
+```
+
+<Tip>
+To share an image, encode it as a base64 string and include it in the `image` field of your message payload. The backend handles the Cloudinary upload and stores only the final CDN URL — no binary data is saved in MongoDB.
+</Tip>
+
+## Message status
+
+Each message moves through a lifecycle of statuses that are tracked in the Redux `chatSlice` and displayed as small indicators next to the timestamp in the `ChatMessages` component:
+
+| Status | Display | Meaning |
+|---|---|---|
+| `sending` | 🕒 | The message has been optimistically added to the UI and is being transmitted over the socket. |
+| `delivered` | ✓✓ | The socket server confirmed delivery to the recipient's socket room. |
+| `seen` | ✓✓👁️ | The recipient scrolled to the message, and their client emitted a `messageSeen` event back to the sender. |
+| `failed` | — | The socket returned an error. The message is marked failed and can be retried. |
+
+The `ChatMessages` component automatically marks the last visible message as `seen` by emitting a `messageSeen` socket event to the sender whenever the message list scrolls to the bottom and the last message is from the other user.
+
+## Optimistic UI updates
+
+When you send a message, the client adds it to the Redux store immediately with a temporary ID (`temp-${Date.now()}-${random}`) and a `sending` status — so the bubble appears in the chat without waiting for the server round-trip. Once the socket acknowledges the send, the status updates to `delivered` and the temporary ID is reconciled with the server-assigned ID.

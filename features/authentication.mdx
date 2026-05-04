@@ -1,0 +1,68 @@
+---
+title: "Authentication: Sign up, log in, and manage your profile"
+description: "How ChatsPeCharcha handles signup, login, JWT sessions, and profile picture updates. Covers the full user authentication lifecycle from registration to dashboard."
+---
+
+ChatsPeCharcha handles authentication through a straightforward flow: you create an account with your name, email, and password, then log in to receive a JWT token that keeps your session alive across requests. Profile pictures are uploaded directly to Cloudinary and stored as a URL on your user record.
+
+## Signing up
+
+When you create a new account, the signup form collects three required fields and submits them to the backend, which hashes your password with bcrypt and returns a JWT token alongside your user data.
+
+<Steps>
+  <Step title="Open the signup page">
+    Navigate to `/signup`. You will see a form with fields for **Full Name**, **Email**, **Password**, and **Confirm Password**.
+  </Step>
+  <Step title="Fill in your details">
+    Enter your full name, a valid email address, and a password of at least 6 characters. The confirm password field must match exactly.
+  </Step>
+  <Step title="Submit the form">
+    Click **Create Account**. The client sends a `POST` request with `fullName`, `email`, and `password` to the backend signup endpoint.
+  </Step>
+  <Step title="Get redirected to login">
+    On success, the server returns a `201` response with your user data and a JWT token. The frontend navigates you to `/login` so you can sign in with your new credentials.
+  </Step>
+</Steps>
+
+If the email address is already registered, the signup request returns a `400` error with the message `"Email already exists"`.
+
+## Logging in
+
+The login page at `/login` accepts your email and password. On a successful match the server returns a JWT token, which the frontend stores in `localStorage` under the key `authToken` and commits to the Redux store.
+
+<Steps>
+  <Step title="Enter your credentials">
+    Navigate to `/login` and fill in your email address and password. Use the eye icon to toggle password visibility.
+  </Step>
+  <Step title="Submit the form">
+    Click **Sign In**. The client sends a `POST` request with `email` and `password`.
+  </Step>
+  <Step title="Receive your session token">
+    The server validates your credentials, generates a JWT token that expires in **7 days**, and returns it in the response body alongside your profile data.
+  </Step>
+  <Step title="Enter the dashboard">
+    The frontend stores the token, updates the Redux `user` state, and navigates you to `/dashboard`. The Socket.io connection is established immediately after authentication.
+  </Step>
+</Steps>
+
+<Note>
+ChatsPeCharcha uses **token-based sessions**. The JWT is stored in `localStorage` and attached to every API request as a bearer token. Sessions last 7 days. If you clear your browser storage or the token expires, you will need to log in again.
+</Note>
+
+## Updating your profile picture
+
+You can update your profile picture from within the application. The new image is uploaded to Cloudinary and the resulting secure URL replaces your previous profile picture in the database.
+
+To update your picture:
+
+1. Open your profile settings.
+2. Select a new image from your device.
+3. The client uploads the base64-encoded image to the `PUT /auth/update-profile` endpoint.
+4. The server uploads the image to Cloudinary via `cloudinary.uploader.upload` and saves the returned `secure_url` to your user record.
+5. Your new avatar appears immediately across the application.
+
+If no image is provided, the server responds with `400 "Profile pic is required"`. New accounts start with a default avatar at the URL set in the user model.
+
+## Email verification
+
+The user model includes an `isVerified` field that defaults to `false` on signup, along with `verificationToken` and `verificationTokenExpires` fields. Email verification is part of the data model but the verification gate is not currently enforced on the login endpoint — all accounts can log in regardless of `isVerified` status. Future releases may use this field to restrict access until the email address is confirmed.

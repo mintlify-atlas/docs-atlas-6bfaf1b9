@@ -1,0 +1,105 @@
+---
+title: "Get messages between you and another user"
+description: "Retrieve the full conversation history between the authenticated user and a specified user, returned as an array of message objects sorted by creation time."
+---
+
+Use this endpoint to fetch all messages exchanged between you and another user. You identify the other participant by their user ID in the path. The server queries both directions of the conversation — messages you sent to them and messages they sent to you — and returns them together in a single array ordered by creation time.
+
+## Endpoint
+
+```
+GET /api/message/:id
+```
+
+## Authentication
+
+This endpoint requires a valid JWT. Pass the token in the `Authorization` header as a Bearer token.
+
+```
+Authorization: Bearer <token>
+```
+
+<Warning>
+  Requests without a valid Bearer token in the `Authorization` header are rejected with `401 Unauthorized`.
+</Warning>
+
+## Path parameters
+
+<ParamField path="id" type="string" required>
+  The MongoDB `_id` of the other user whose conversation history you want to retrieve.
+</ParamField>
+
+## Request body
+
+This endpoint does not accept a request body.
+
+## Response
+
+Returns an array of message objects. The array is empty when no messages exist between the two users.
+
+<ResponseField name="[]._id" type="string" required>
+  Unique identifier for the message document.
+</ResponseField>
+
+<ResponseField name="[].senderId" type="string" required>
+  MongoDB `_id` of the user who sent the message.
+</ResponseField>
+
+<ResponseField name="[].receiverId" type="string" required>
+  MongoDB `_id` of the user who received the message.
+</ResponseField>
+
+<ResponseField name="[].text" type="string">
+  The text content of the message. Present when the message includes text.
+</ResponseField>
+
+<ResponseField name="[].image" type="string">
+  The Cloudinary URL of the attached image. Present when the message includes an image.
+</ResponseField>
+
+<ResponseField name="[].createdAt" type="string" required>
+  ISO 8601 timestamp of when the message was created. Use this field to sort or display messages chronologically.
+</ResponseField>
+
+<ResponseField name="[].updatedAt" type="string" required>
+  ISO 8601 timestamp of the last update to the message document.
+</ResponseField>
+
+## Example request
+
+```bash
+curl -X GET https://your-api.com/api/message/64b1f2c3e4d5a6b7c8d9e0f1 \
+  -H "Authorization: Bearer your-jwt-token"
+```
+
+## Example response
+
+```json
+[
+  {
+    "_id": "64c2e3d4f5e6b7c8d9e0f1a2",
+    "senderId": "64a0f1b2c3d4e5f6a7b8c9d0",
+    "receiverId": "64b1f2c3e4d5a6b7c8d9e0f1",
+    "text": "Hey, are you free to chat?",
+    "image": null,
+    "createdAt": "2024-07-16T14:30:00.000Z",
+    "updatedAt": "2024-07-16T14:30:00.000Z"
+  },
+  {
+    "_id": "64c2e3d4f5e6b7c8d9e0f1a3",
+    "senderId": "64b1f2c3e4d5a6b7c8d9e0f1",
+    "receiverId": "64a0f1b2c3d4e5f6a7b8c9d0",
+    "text": "Sure, give me five minutes!",
+    "image": null,
+    "createdAt": "2024-07-16T14:31:15.000Z",
+    "updatedAt": "2024-07-16T14:31:15.000Z"
+  }
+]
+```
+
+## Error responses
+
+| Status | Description |
+| ------ | ----------- |
+| `401 Unauthorized` | No valid Bearer token was provided in the `Authorization` header. |
+| `500 Internal Server Error` | An unexpected error occurred on the server. |

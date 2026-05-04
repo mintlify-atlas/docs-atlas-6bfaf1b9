@@ -1,0 +1,218 @@
+---
+title: 'Accept or reject a friend request'
+description: 'Accept or reject a pending friend request using its ID. Only the request recipient can act on it. Returns the updated request object. Requires JWT Bearer auth.'
+---
+
+Once another user sends you a friend request, you can accept or reject it using the endpoints on this page. Both endpoints take the `requestId` — the `_id` field of the friend request document — as a path parameter. You can retrieve pending request IDs from [GET /api/users/requests](/api/friends/request).
+
+<Note>
+  Only the recipient of a friend request can accept or reject it. If you are the sender and you call either endpoint with your own JWT, the server returns `403 Forbidden`.
+</Note>
+
+## Authentication
+
+Required for both endpoints. Pass the JWT returned at login as a Bearer token in the `Authorization` header. Requests without a valid token return `401 Unauthorized`.
+
+```
+Authorization: Bearer <token>
+```
+
+---
+
+<AccordionGroup>
+
+  <Accordion title="PUT /api/users/requests/accept/:requestId — Accept a friend request" defaultOpen={true}>
+
+    Accept a pending friend request. The request's `status` is updated to `"accepted"`, and both users are added to each other's friends list. You can now start a conversation with this user.
+
+    ```
+    PUT /api/users/requests/accept/:requestId
+    ```
+
+    ### Path parameters
+
+    <ParamField path="requestId" type="string" required>
+      The MongoDB ObjectId of the friend request to accept. Obtain this from the `_id` field in the [GET /api/users/requests](/api/friends/request) response.
+    </ParamField>
+
+    ### Request body
+
+    None. No request body is required.
+
+    ### Response
+
+    Returns `200 OK` with a `message` and the updated `request` object.
+
+    <ResponseField name="message" type="string" required>
+      Confirmation string. Value: `"Friend request accepted"`.
+    </ResponseField>
+
+    <ResponseField name="request" type="object" required>
+      The updated friend request document with populated sender and recipient.
+      <Expandable title="request properties">
+        <ResponseField name="_id" type="string" required>
+          MongoDB ObjectId of the friend request.
+        </ResponseField>
+        <ResponseField name="sender" type="object" required>
+          Populated user object for the person who sent the request.
+          <Expandable title="sender properties">
+            <ResponseField name="_id" type="string" required>
+              Sender's MongoDB ObjectId.
+            </ResponseField>
+            <ResponseField name="fullName" type="string" required>
+              Sender's display name.
+            </ResponseField>
+            <ResponseField name="email" type="string" required>
+              Sender's email address.
+            </ResponseField>
+            <ResponseField name="profilePic" type="string" required>
+              URL of the sender's profile picture.
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        <ResponseField name="recipient" type="object" required>
+          Populated user object for the recipient (you). Same fields as `sender`.
+        </ResponseField>
+        <ResponseField name="status" type="string" required>
+          `"accepted"` after a successful call.
+        </ResponseField>
+        <ResponseField name="createdAt" type="string" required>
+          ISO 8601 timestamp of when the request was originally created.
+        </ResponseField>
+        <ResponseField name="updatedAt" type="string" required>
+          ISO 8601 timestamp of when the status was last updated.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    ### Example
+
+    ```bash
+    curl -X PUT https://your-api.com/api/users/requests/accept/65a3b4c5d6e7f8a9b0c1d2e3 \
+      -H "Authorization: Bearer your-jwt-token"
+    ```
+
+    ```json
+    {
+      "message": "Friend request accepted",
+      "request": {
+        "_id": "65a3b4c5d6e7f8a9b0c1d2e3",
+        "sender": {
+          "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+          "fullName": "Alex Smith",
+          "email": "alex@example.com",
+          "profilePic": "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+        },
+        "recipient": {
+          "_id": "64f1a2b3c4d5e6f7a8b9c0d2",
+          "fullName": "Jane Doe",
+          "email": "jane@example.com",
+          "profilePic": "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+        },
+        "status": "accepted",
+        "createdAt": "2024-03-15T11:00:00.000Z",
+        "updatedAt": "2024-03-15T11:05:00.000Z"
+      }
+    }
+    ```
+
+    ### Error responses
+
+    | Status | Message | Cause |
+    |--------|---------|-------|
+    | `400` | `"Request already processed"` | The request status is no longer `"pending"` — it was already accepted or rejected. |
+    | `401` | `"Unauthorized"` | No valid Bearer token was included in the `Authorization` header. |
+    | `403` | `"Not authorized to accept this request"` | Your account is not the recipient of this friend request. |
+    | `404` | `"Friend request not found"` | No friend request exists with the given `requestId`. |
+    | `500` | `"Server error"` | An unexpected server-side error occurred. |
+
+  </Accordion>
+
+  <Accordion title="PUT /api/users/requests/reject/:requestId — Reject a friend request">
+
+    Reject a pending friend request. The request's `status` is updated to `"rejected"`. The sender is not notified, and no changes are made to either user's friends list.
+
+    ```
+    PUT /api/users/requests/reject/:requestId
+    ```
+
+    ### Path parameters
+
+    <ParamField path="requestId" type="string" required>
+      The MongoDB ObjectId of the friend request to reject. Obtain this from the `_id` field in the [GET /api/users/requests](/api/friends/request) response.
+    </ParamField>
+
+    ### Request body
+
+    None. No request body is required.
+
+    ### Response
+
+    Returns `200 OK` with a `message` and the updated `request` object.
+
+    <ResponseField name="message" type="string" required>
+      Confirmation string. Value: `"Friend request rejected"`.
+    </ResponseField>
+
+    <ResponseField name="request" type="object" required>
+      The updated friend request document.
+      <Expandable title="request properties">
+        <ResponseField name="_id" type="string" required>
+          MongoDB ObjectId of the friend request.
+        </ResponseField>
+        <ResponseField name="sender" type="string" required>
+          MongoDB ObjectId of the user who sent the request (not populated).
+        </ResponseField>
+        <ResponseField name="recipient" type="string" required>
+          MongoDB ObjectId of the recipient (you, not populated).
+        </ResponseField>
+        <ResponseField name="status" type="string" required>
+          `"rejected"` after a successful call.
+        </ResponseField>
+        <ResponseField name="createdAt" type="string" required>
+          ISO 8601 timestamp of when the request was originally created.
+        </ResponseField>
+        <ResponseField name="updatedAt" type="string" required>
+          ISO 8601 timestamp of when the status was last updated.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    ### Example
+
+    ```bash
+    curl -X PUT https://your-api.com/api/users/requests/reject/65a3b4c5d6e7f8a9b0c1d2e3 \
+      -H "Authorization: Bearer your-jwt-token"
+    ```
+
+    ```json
+    {
+      "message": "Friend request rejected",
+      "request": {
+        "_id": "65a3b4c5d6e7f8a9b0c1d2e3",
+        "sender": "64f1a2b3c4d5e6f7a8b9c0d1",
+        "recipient": "64f1a2b3c4d5e6f7a8b9c0d2",
+        "status": "rejected",
+        "createdAt": "2024-03-15T11:00:00.000Z",
+        "updatedAt": "2024-03-15T11:07:00.000Z"
+      }
+    }
+    ```
+
+    <Warning>
+      Rejecting a request sets its status to `"rejected"` but does not delete the document. The sender can attempt to send a new friend request after rejection since the duplicate-check only applies to `"pending"` requests.
+    </Warning>
+
+    ### Error responses
+
+    | Status | Message | Cause |
+    |--------|---------|-------|
+    | `400` | `"Request already processed"` | The request status is no longer `"pending"` — it was already accepted or rejected. |
+    | `401` | `"Unauthorized"` | No valid Bearer token was included in the `Authorization` header. |
+    | `403` | `"Not authorized to reject this request"` | Your account is not the recipient of this friend request. |
+    | `404` | `"Friend request not found"` | No friend request exists with the given `requestId`. |
+    | `500` | `"Server error"` | An unexpected server-side error occurred. |
+
+  </Accordion>
+
+</AccordionGroup>

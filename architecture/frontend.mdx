@@ -1,0 +1,102 @@
+---
+title: 'Frontend architecture and app structure'
+description: 'Learn how the ChatsPeCharcha React app is structured, including routing, Redux state slices, React Query data fetching, and styling.'
+---
+
+The ChatsPeCharcha frontend is a React 18 single-page application built with Vite and TypeScript. It manages client-side routing through React Router DOM, global application state through Redux Toolkit, and server-state caching through React Query. The UI is composed of Shadcn UI components styled with Tailwind CSS, with dark and light mode support provided by next-themes.
+
+## Directory structure
+
+```
+frontend/src/
+├── components/     # Reusable UI components
+├── functions/      # Helper functions
+├── hooks/          # Custom React hooks
+├── pages/          # Page components
+│   └── dashboard/  # Chat dashboard components
+├── redux/          # State management
+├── utils/          # Utilities
+└── lib/            # Shared libraries
+```
+
+## React and Vite setup
+
+Vite serves as the development server and production bundler, providing fast hot module replacement during development. TypeScript is configured project-wide, giving you full type-checking across components, Redux slices, and custom hooks. The app is bootstrapped in `main.tsx` and the root component is `App.tsx`.
+
+## Routing
+
+React Router DOM handles all client-side navigation. Routes are defined in `src/App.tsx` inside a `<BrowserRouter>`:
+
+| Path | Component | Description |
+|------|-----------|-------------|
+| `/` | `Landing` | Public landing page |
+| `/login` | `Login` | User sign-in form |
+| `/signup` | `Signup` | New account registration |
+| `/dashboard` | `Dashboard` | Main chat interface |
+| `/friend-request/:requestId` | `FriendRequestAction` | Accept or reject a friend request via email link |
+| `*` | `NotFound` | 404 catch-all |
+
+React Query is provided globally by wrapping the router in `<QueryClientProvider>`, making a single `QueryClient` instance available to every component in the tree.
+
+## Redux state management
+
+The Redux store is configured in `src/redux/store.js` using Redux Toolkit's `configureStore`. State is automatically persisted to `localStorage` on every change and rehydrated on page load. The store includes a custom `socketMiddleware` for dispatching socket events, and `redux-logger` for development debugging.
+
+The root reducer combines two slices:
+
+```js
+const rootReducer = combineReducers({
+  user: userSlice.reducer,
+  chat: chatReducer,
+});
+```
+
+### User slice (`redux/features/user/userSlice.js`)
+
+Manages authentication state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user` | object \| null | The authenticated user object |
+| `isAuthenticated` | boolean | Whether the user is logged in |
+| `token` | string \| null | The current JWT token |
+
+Actions: `setUser`, `setToken`, `logout`.
+
+Selectors: `selectUser`, `selectIsAuthenticated`, `selectToken`.
+
+### Chat slice (`redux/features/chat/chatSlice.ts`)
+
+Manages all real-time chat state, written in TypeScript.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `conversations` | object | Map of conversation ID → messages and unread count |
+| `onlineUsers` | string[] | Array of currently online user IDs |
+| `typingUsers` | object | Map of user ID → typing boolean |
+| `activeConversation` | string \| null | The conversation currently open |
+
+Each message in a conversation has a `status` field typed as `'sending' | 'sent' | 'delivered' | 'seen' | 'failed'`, enabling fine-grained read-receipt rendering.
+
+Actions: `addMessage`, `updateMessageStatus`, `setTypingStatus`, `setOnlineUsers`, `addOnlineUser`, `removeOnlineUser`, `setActiveConversation`, `clearChatState`.
+
+<Tip>
+  Opening a conversation automatically resets its `unreadCount` to zero via the `setActiveConversation` reducer, so badge counts stay accurate without a separate API call.
+</Tip>
+
+## Data fetching with React Query
+
+Server data — such as the friends list, message history, and pending friend requests — is fetched and cached using React Query. Custom hooks in `src/hooks/` wrap `useQuery` and `useMutation` calls, keeping component code free of fetch logic:
+
+| Hook file | Purpose |
+|-----------|---------|
+| `useQuery.js` | Wraps `@tanstack/react-query` `useQuery` with project defaults |
+| `useMutation.js` | Wraps `@tanstack/react-query` `useMutation` for write operations |
+| `useAuth.js` | Reads auth state and redirects unauthenticated users |
+| `use-mobile.tsx` | Detects mobile viewport for responsive layout adjustments |
+| `uploadFiles.js` | Handles multipart file upload to the backend |
+| `use-toast.ts` | Exposes the Shadcn UI toast notification API |
+
+## Styling and theming
+
+Tailwind CSS provides utility-class styling across all components. Shadcn UI supplies accessible, pre-built primitives (buttons, dialogs, tooltips, toasts, and more) that you can copy into `src/components/ui/` and customise freely. Dark and light mode are toggled through next-themes, which injects a `dark` class on the `<html>` element and persists the user's preference to `localStorage`.

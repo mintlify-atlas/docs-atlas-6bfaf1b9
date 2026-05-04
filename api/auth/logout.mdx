@@ -1,0 +1,48 @@
+---
+title: 'POST /api/auth/logout — End the current session'
+description: 'Sign out by clearing the jwt cookie. No request body required. If storing the JWT token in client memory or localStorage, discard it after calling this endpoint.'
+---
+
+Sign out the current user by clearing the `jwt` session cookie. The server sets the cookie's `maxAge` to zero, which instructs the browser to immediately expire and delete it. You do not need to pass a token or request body — the endpoint always returns a success response.
+
+```
+POST /api/auth/logout
+```
+
+## Authentication
+
+None required. The endpoint is publicly accessible and safe to call without an active session.
+
+## Request body
+
+No request body is expected or required.
+
+## Response
+
+Returns `200 OK` with a confirmation message.
+
+<ResponseField name="message" type="string" required>
+  Confirmation string. Value: `"Logged out successfully"`.
+</ResponseField>
+
+<Note>
+  This endpoint only clears the `jwt` cookie. If you are storing the token in memory or local storage on the client, you are responsible for discarding it after calling this endpoint.
+</Note>
+
+## Example
+
+```bash
+curl -X POST https://your-api.com/api/auth/logout
+```
+
+```json
+{
+  "message": "Logged out successfully"
+}
+```
+
+## Error responses
+
+| Status | Message | Cause |
+|--------|---------|-------|
+| `500` | `"Internal Server Error"` | An unexpected server-side error occurred. |

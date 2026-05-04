@@ -1,0 +1,58 @@
+---
+title: "WebSocket connection and authentication overview"
+description: "Learn how ChatsPeCharcha uses Socket.io to manage real-time connections, authenticate users, assign rooms, and broadcast online presence."
+---
+
+ChatsPeCharcha uses Socket.io to power all real-time features — including message delivery, typing indicators, read receipts, and online presence. Instead of polling the REST API, your client opens a single persistent WebSocket connection and receives push events as they happen. The same server that handles HTTP requests also serves the Socket.io endpoint, so no additional host or port configuration is required.
+
+## Connecting to the server
+
+The Socket.io server runs on the same origin as the REST API. Pass your authenticated user's ID as a `userId` query parameter when you open the connection. The server reads this value from `socket.handshake.query.userId` to register the socket and assign the user to their personal room.
+
+```javascript
+import { io } from "socket.io-client";
+
+const socket = io("http://localhost:5001", {
+  query: {
+    userId: "your-user-id"
+  },
+  withCredentials: true
+});
+
+socket.on("connect", () => {
+  console.log("Connected:", socket.id);
+});
+
+socket.on("getOnlineUsers", (onlineUsers) => {
+  console.log("Online users:", onlineUsers);
+});
+```
+
+<Warning>
+  You must pass a valid `userId` in the connection query. Without it the server cannot map the socket to a user, meaning the socket will not be placed in a room and you will not receive targeted events such as `receiveMessage` or `userTyping`.
+</Warning>
+
+## Room assignment
+
+When a user connects, the server calls `socket.join(userId)` to place that socket in a room named after the user's ID. All targeted server-to-client events (messages, typing indicators, read receipts) are delivered to this room rather than to a specific socket ID. This means that if a user connects from multiple tabs or devices, each socket joins the same room and all of them receive the events simultaneously.
+
+## Online users tracking
+
+Immediately after a user connects, the server emits a `getOnlineUsers` event to **all** connected clients with an updated array of currently online user IDs. The same broadcast happens when a user disconnects. Listen for this event to keep your UI's presence indicators in sync in real time.
+
+```javascript
+socket.on("getOnlineUsers", (onlineUserIds) => {
+  // onlineUserIds is a string[] of userId values
+  store.dispatch(setOnlineUsers(onlineUserIds));
+});
+```
+
+The server maintains an in-memory map of `{ userId: socketId }` pairs. When a socket disconnects, the server removes that entry and re-broadcasts the updated list.
+
+<Note>
+  Socket.io handles reconnection automatically. If the connection drops, the client library will attempt to reconnect using exponential back-off and re-emit the `userId` query parameter so the server re-registers the socket and re-joins the user's room without any extra code on your part.
+</Note>
+
+## CORS configuration
+
+The server allows credentials and accepts connections from `http://localhost:8080`, `http://localhost:3000`, and the value of the `FRONTEND_URL` environment variable. In production, set `FRONTEND_URL` to your deployed frontend origin and ensure `withCredentials: true` is set on the client so session cookies are forwarded with the handshake request.

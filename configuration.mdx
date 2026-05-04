@@ -1,0 +1,139 @@
+---
+title: "Configure ChatsPeCharcha environment variables"
+description: "Configure ChatsPeCharcha's backend and frontend environment variables for database connections, authentication, file uploads, and email delivery."
+icon: "gear"
+---
+
+ChatsPeCharcha uses `.env` files to manage environment-specific settings for both the backend Node.js server and the frontend Vite application. This page describes every available variable, its purpose, and whether it is required for the application to run.
+
+<Warning>
+  Never commit your `.env` files to version control. They contain sensitive credentials such as your JWT secret, database URI, and API keys. Both `.env` files are excluded from version control via `.gitignore`.
+</Warning>
+
+<Tabs>
+  <Tab title="Backend">
+    The backend environment file lives at `backend/.env`. Copy `backend/.env.example` to get started:
+
+    ```bash
+    cp backend/.env.example backend/.env
+    ```
+
+    **Example `backend/.env`**
+
+    ```bash backend/.env
+    PORT=5001
+    MONGODB_URI=mongodb://localhost:27017/chatspecharcha
+    JWT_SECRET=replace_with_a_long_random_string
+    FRONTEND_URL=http://localhost:8080
+    NODE_ENV=development
+
+    # Cloudinary (optional — only needed for image uploads)
+    CLOUDINARY_CLOUD_NAME=your_cloud_name
+    CLOUDINARY_API_KEY=your_api_key
+    CLOUDINARY_API_SECRET=your_api_secret
+
+    # Nodemailer (required for email verification)
+    EMAIL_USER=your_email@example.com
+    EMAIL_PASS=your_email_app_password
+    ```
+
+    ---
+
+    <ParamField path="PORT" type="number" default="5001">
+      The port the Express server listens on. Defaults to `5001` if not set. Change this if another process is already using the port.
+    </ParamField>
+
+    <ParamField path="MONGODB_URI" type="string" required>
+      The MongoDB connection string. Use a local instance (`mongodb://localhost:27017/dbname`) or a cloud-hosted URI from MongoDB Atlas. The database is created automatically on first connection.
+    </ParamField>
+
+    <ParamField path="JWT_SECRET" type="string" required>
+      A secret string used to sign and verify JSON Web Tokens. Use a long, random value — for example the output of `openssl rand -hex 32`. Do not reuse this value across environments.
+    </ParamField>
+
+    <ParamField path="FRONTEND_URL" type="string" required>
+      The origin URL of the frontend, used to configure CORS. In development this is typically `http://localhost:8080`. In production, set this to your deployed frontend URL. Requests from any other origin will be rejected.
+    </ParamField>
+
+    <ParamField path="NODE_ENV" type="string" default="development">
+      The runtime environment. Set to `production` when deploying. In production mode, the backend serves the compiled frontend static files from `frontend/dist/`.
+    </ParamField>
+
+    <ParamField path="CLOUDINARY_CLOUD_NAME" type="string">
+      Your Cloudinary cloud name, found in the Cloudinary dashboard. Required only if you enable profile image or media uploads.
+    </ParamField>
+
+    <ParamField path="CLOUDINARY_API_KEY" type="string">
+      Your Cloudinary API key. Required only for image upload functionality.
+    </ParamField>
+
+    <ParamField path="CLOUDINARY_API_SECRET" type="string">
+      Your Cloudinary API secret. Required only for image upload functionality. Keep this value confidential.
+    </ParamField>
+
+    <ParamField path="EMAIL_USER" type="string">
+      The email address Nodemailer uses to send verification emails. For Gmail, this is your full Gmail address. You may need to configure an app-specific password if two-factor authentication is enabled.
+    </ParamField>
+
+    <ParamField path="EMAIL_PASS" type="string">
+      The password or app-specific password for the `EMAIL_USER` account. For Gmail with 2FA, generate an app password in your Google account security settings instead of using your regular password.
+    </ParamField>
+
+    <Note>
+      Cloudinary credentials are optional. If you do not provide them, the image upload feature will be unavailable, but all other functionality — messaging, authentication, friend requests, and real-time features — will work normally.
+    </Note>
+  </Tab>
+
+  <Tab title="Frontend">
+    The frontend environment file lives at `frontend/.env`. Copy `frontend/.env.example` to get started:
+
+    ```bash
+    cp frontend/.env.example frontend/.env
+    ```
+
+    **Example `frontend/.env`**
+
+    ```bash frontend/.env
+    VITE_API_BASE_URL=http://localhost:5001
+    ```
+
+    ---
+
+    <ParamField path="VITE_API_BASE_URL" type="string" required>
+      The base URL of the backend API server. The frontend uses this to construct all API request URLs. In development, point this at your local backend (`http://localhost:5001`). In production, set this to your deployed backend URL.
+
+      All Vite environment variables must be prefixed with `VITE_` to be accessible in browser code. Variables without this prefix are not exposed to the client.
+    </ParamField>
+
+    <Note>
+      The Vite development server is configured to proxy requests matching `/api/*` to `http://localhost:3000` (see `vite.config.ts`). If you rely on the built-in proxy instead of `VITE_API_BASE_URL`, ensure your proxy target matches the port your backend is running on.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Generating a secure JWT secret
+
+You can generate a cryptographically secure random string for `JWT_SECRET` using Node.js or OpenSSL:
+
+<CodeGroup>
+
+```bash openssl
+openssl rand -hex 32
+```
+
+```bash node
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+</CodeGroup>
+
+## Configuration checklist
+
+Before starting the application, verify the following:
+
+- `MONGODB_URI` points to a running MongoDB instance
+- `JWT_SECRET` is set to a unique, unpredictable value
+- `FRONTEND_URL` matches the origin where the frontend is served
+- `VITE_API_BASE_URL` in the frontend `.env` points to your backend
+
+Once your environment is configured, return to the [Quick Start](/quickstart) guide to start the servers.

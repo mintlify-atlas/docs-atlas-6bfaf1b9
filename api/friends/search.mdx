@@ -1,0 +1,79 @@
+---
+title: 'GET /api/users/search — Search users by email'
+description: 'Search for registered ChatsPeCharcha users by email address. Returns matching user profiles, excluding your own account from results.'
+---
+
+Search for other users by email address before sending a friend request. The query performs a case-insensitive partial match, so you can pass a partial address such as `jane` and receive all accounts whose email contains that string. Your own account is always excluded from results. This endpoint requires authentication via JWT Bearer token.
+
+```
+GET /api/users/search
+```
+
+## Authentication
+
+Required. Pass the JWT returned at login as a Bearer token in the `Authorization` header. Requests without a valid token return `401 Unauthorized`.
+
+```
+Authorization: Bearer <token>
+```
+
+## Query parameters
+
+<ParamField query="email" type="string" required>
+  The email address (or partial email) to search for. The search is case-insensitive and matches any part of the stored email. Example: `jane@example.com` or just `jane`.
+</ParamField>
+
+## Response
+
+Returns `200 OK` with an array of matching user objects. The array is empty if no users match the query.
+
+<ResponseField name="[]" type="object[]">
+  Array of user objects matching the search query.
+  <Expandable title="User object properties">
+    <ResponseField name="_id" type="string" required>
+      MongoDB ObjectId for the user document.
+    </ResponseField>
+    <ResponseField name="fullName" type="string" required>
+      The user's display name.
+    </ResponseField>
+    <ResponseField name="email" type="string" required>
+      The user's email address.
+    </ResponseField>
+    <ResponseField name="profilePic" type="string" required>
+      URL of the user's profile picture. Defaults to a generic avatar if not set.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Note>
+  Use this endpoint to look up a user's `_id` before calling [POST /api/users/request](/api/friends/request). Searching by email is the recommended way to find the exact account you want to add as a friend.
+</Note>
+
+## Example
+
+```bash
+curl -X GET "https://your-api.com/api/users/search?email=jane" \
+  -H "Authorization: Bearer your-jwt-token"
+```
+
+```json
+[
+  {
+    "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+    "fullName": "Jane Doe",
+    "email": "jane@example.com",
+    "profilePic": "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+    "isVerified": true,
+    "createdAt": "2024-03-15T10:22:00.000Z",
+    "updatedAt": "2024-03-15T10:22:00.000Z"
+  }
+]
+```
+
+## Error responses
+
+| Status | Message | Cause |
+|--------|---------|-------|
+| `400` | `"Email is required"` | The `email` query parameter was omitted. |
+| `401` | `"Unauthorized"` | No valid Bearer token was included in the `Authorization` header. |
+| `500` | `"Server error"` | An unexpected server-side error occurred. |

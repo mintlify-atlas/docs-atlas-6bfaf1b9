@@ -1,0 +1,365 @@
+---
+title: "WebSocket events reference for ChatsPeCharcha"
+description: "Complete reference for all Socket.io events in ChatsPeCharcha, including payloads, callbacks, and code examples for every client and server event."
+---
+
+ChatsPeCharcha's real-time layer is built entirely on Socket.io events. Some events travel from your client to the server (client → server), and others are pushed from the server to one or more connected clients (server → client). This page documents every event, its payload shape, any acknowledgement callback, and the side effects the server produces when it receives or emits the event.
+
+## Event directions at a glance
+
+<CardGroup cols={2}>
+  <Card title="Client → Server" icon="arrow-up">
+    Events your application emits to the server.
+
+    - `sendMessage`
+    - `typing`
+    - `messageSeen`
+  </Card>
+  <Card title="Server → Client" icon="arrow-down">
+    Events the server pushes to your application.
+
+    - `receiveMessage`
+    - `messageSent`
+    - `messageStatusUpdate`
+    - `userTyping`
+    - `messageSeen`
+    - `getOnlineUsers`
+  </Card>
+</CardGroup>
+
+## Client → Server events
+
+These are the events you emit from your application. Use `socket.emit(eventName, payload, callback?)` for each one.
+
+<AccordionGroup>
+  <Accordion title="sendMessage — send a message to another user">
+    Emit this event to deliver a message to another user. The server creates a message object, routes it to the receiver, and sends confirmation events back to you.
+
+    **Payload**
+
+    ```json
+    {
+      "senderId": "string",
+      "receiverId": "string",
+      "message": {
+        "text": "string (optional)",
+        "image": "string (optional, base64 or URL)"
+      },
+      "tempId": "string"
+    }
+    ```
+
+    | Field | Type | Required | Description |
+    | --- | --- | --- | --- |
+    | `senderId` | string | Yes | Your user ID. |
+    | `receiverId` | string | Yes | The recipient's user ID. |
+    | `message.text` | string | No | Text content of the message. At least one of `text` or `image` should be present. |
+    | `message.image` | string | No | Image content of the message. |
+    | `tempId` | string | Yes | A client-generated temporary ID used to reconcile the optimistic message in your UI after the server acknowledges it. |
+
+    **Acknowledgement callback**
+
+    The server calls the optional callback with:
+
+    ```json
+    {
+      "success": true,
+      "messageId": "msg_1716499200000_abc123def",
+      "tempId": "your-temp-id"
+    }
+    ```
+
+    On failure:
+
+    ```json
+    {
+      "success": false,
+      "error": "Missing required message fields"
+    }
+    ```
+
+    **Side effects**
+
+    - The server emits [`receiveMessage`](#receivemessage) to the receiver's socket room (if online).
+    - The server emits [`messageStatusUpdate`](#messagestatusupdate) back to you with `status: 'delivered'` (if the receiver is online).
+    - The server emits [`messageSent`](#messagesent) back to you as a full confirmation with the server-assigned `_id`.
+
+    **Example**
+
+    ```javascript
+    const tempId = `temp-${Date.now()}`;
+
+    socket.emit(
+      "sendMessage",
+      {
+        senderId: currentUserId,
+        receiverId: "64b1f2c3e4d5a6b7c8d9e0f1",
+        message: { text: "Hey, are you there?" },
+        tempId,
+      },
+      (ack) => {
+        if (ack.success) {
+          console.log("Server assigned ID:", ack.messageId);
+        } else {
+          console.error("Send failed:", ack.error);
+        }
+      }
+    );
+    ```
+  </Accordion>
+
+  <Accordion title="typing — broadcast your typing status">
+    Emit this event whenever the user starts or stops typing in a conversation. The server forwards a `userTyping` event to the recipient so their UI can show or hide a typing indicator.
+
+    **Payload**
+
+    ```json
+    {
+      "receiverId": "string",
+      "isTyping": true
+    }
+    ```
+
+    | Field | Type | Required | Description |
+    | --- | --- | --- | --- |
+    | `receiverId` | string | Yes | The user ID of the person you are typing to. |
+    | `isTyping` | boolean | Yes | `true` when the user starts typing; `false` when they stop. |
+
+    The server infers `senderId` from `socket.handshake.query.userId` — you do not need to include it in the payload.
+
+    **No acknowledgement callback.** The server does not call back for typing events.
+
+    **Side effects**
+
+    - The server emits [`userTyping`](#usertyping) to the receiver's room.
+    - Typing start events (`isTyping: true`) are silently dropped if the receiver is offline to avoid queuing stale typing states.
+    - Typing stop events (`isTyping: false`) are still processed even when the receiver is offline, so the sender's own UI can clear any local typing state.
+
+    **Example**
+
+    ```javascript
+    // Start typing
+    socket.emit("typing", { receiverId: "64b1f2c3e4d5a6b7c8d9e0f1", isTyping: true });
+
+    // Stop typing (e.g., on blur or after a debounce)
+    socket.emit("typing", { receiverId: "64b1f2c3e4d5a6b7c8d9e0f1", isTyping: false });
+    ```
+  </Accordion>
+
+  <Accordion title="messageSeen — mark a message as seen">
+    Emit this event when the current user views a message. The server notifies the original sender that their message has been read.
+
+    **Payload**
+
+    ```json
+    {
+      "messageId": "string",
+      "receiverId": "string"
+    }
+    ```
+
+    | Field | Type | Required | Description |
+    | --- | --- | --- | --- |
+    | `messageId` | string | Yes | The `_id` of the message that was seen. |
+    | `receiverId` | string | Yes | The user ID of the person who sent the message (the person you want to notify). |
+
+    **No acknowledgement callback.**
+
+    **Side effects**
+
+    - The server emits [`messageSeen`](#messageseen-server) to the sender's socket room.
+
+    **Example**
+
+    ```javascript
+    socket.emit("messageSeen", {
+      messageId: "msg_1716499200000_abc123def",
+      receiverId: "64b1f2c3e4d5a6b7c8d9e0f1",
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Server → Client events
+
+These are the events the server pushes to your application. Use `socket.on(eventName, handler)` to listen for them. Register your listeners once, typically when you create the socket instance.
+
+<AccordionGroup>
+  <Accordion title="receiveMessage — incoming message from another user">
+    The server emits this event to your socket room when another user sends you a message and you are currently online.
+
+    **Payload**
+
+    ```json
+    {
+      "_id": "msg_1716499200000_abc123def",
+      "senderId": "64a0f1b2c3d4e5f6a7b8c9d0",
+      "receiverId": "64b1f2c3e4d5a6b7c8d9e0f1",
+      "content": { "text": "Hey, are you there?" },
+      "timestamp": "2024-07-16T14:30:00.000Z",
+      "status": "delivered"
+    }
+    ```
+
+    | Field | Type | Description |
+    | --- | --- | --- |
+    | `_id` | string | Server-assigned message ID. |
+    | `senderId` | string | User ID of the sender. |
+    | `receiverId` | string | Your user ID. |
+    | `content` | object | The message content passed as the `message` field in `sendMessage`. |
+    | `timestamp` | string | ISO 8601 timestamp set by the server. |
+    | `status` | string | Always `'delivered'` when emitted via this event. |
+
+    **Example**
+
+    ```javascript
+    socket.on("receiveMessage", (message) => {
+      const conversationId = [message.senderId, message.receiverId].sort().join("_");
+      store.dispatch(addMessage({ conversationId, message }));
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="messageSent — confirmation that your message was delivered">
+    The server emits this event back to you after processing a `sendMessage` event. It contains the full server-side message object, including the permanent `_id` and the original `tempId` so you can replace the optimistic message in your UI.
+
+    **Payload**
+
+    ```json
+    {
+      "_id": "msg_1716499200000_abc123def",
+      "senderId": "64a0f1b2c3d4e5f6a7b8c9d0",
+      "receiverId": "64b1f2c3e4d5a6b7c8d9e0f1",
+      "content": { "text": "Hey, are you there?" },
+      "timestamp": "2024-07-16T14:30:00.000Z",
+      "status": "delivered",
+      "tempId": "temp-1716499199000"
+    }
+    ```
+
+    | Field | Type | Description |
+    | --- | --- | --- |
+    | `_id` | string | Permanent server-assigned ID for the message. |
+    | `senderId` | string | Your user ID. |
+    | `receiverId` | string | The recipient's user ID. |
+    | `content` | object | The original `message` payload you sent. |
+    | `timestamp` | string | ISO 8601 timestamp set by the server. |
+    | `status` | string | Delivery status at the time of confirmation. |
+    | `tempId` | string | The client-generated `tempId` you supplied in `sendMessage`, echoed back for reconciliation. |
+
+    **Example**
+
+    ```javascript
+    socket.on("messageSent", (message) => {
+      // Update the optimistic message in state with the permanent server ID
+      store.dispatch(updateMessageStatus({ messageId: message.tempId, status: message.status, newId: message._id }));
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="messageStatusUpdate — delivery status changed">
+    The server emits this event to your socket room when the delivery status of one of your sent messages changes — for example, when the server confirms the message reached the receiver.
+
+    **Payload**
+
+    ```json
+    {
+      "messageId": "msg_1716499200000_abc123def",
+      "status": "delivered",
+      "tempId": "temp-1716499199000"
+    }
+    ```
+
+    | Field | Type | Description |
+    | --- | --- | --- |
+    | `messageId` | string | The server-assigned `_id` of the message whose status changed. |
+    | `status` | string | The new status value (e.g. `'delivered'`). |
+    | `tempId` | string | The `tempId` from the original `sendMessage` event, if available. |
+
+    **Example**
+
+    ```javascript
+    socket.on("messageStatusUpdate", ({ messageId, status, tempId }) => {
+      store.dispatch(updateMessageStatus({ messageId: tempId || messageId, status }));
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="userTyping — another user is typing">
+    The server forwards this event to your socket room when someone in a conversation with you emits a `typing` event.
+
+    **Payload**
+
+    ```json
+    {
+      "senderId": "64a0f1b2c3d4e5f6a7b8c9d0",
+      "isTyping": true,
+      "receiverId": "64b1f2c3e4d5a6b7c8d9e0f1",
+      "timestamp": "2024-07-16T14:30:00.000Z"
+    }
+    ```
+
+    | Field | Type | Description |
+    | --- | --- | --- |
+    | `senderId` | string | User ID of the person who is typing. |
+    | `isTyping` | boolean | `true` when they started typing; `false` when they stopped. |
+    | `receiverId` | string | Your user ID (the intended recipient of the typing notification). |
+    | `timestamp` | string | ISO 8601 timestamp set by the server when the typing event was processed. |
+
+    **Example**
+
+    ```javascript
+    socket.on("userTyping", ({ senderId, isTyping }) => {
+      store.dispatch(setTypingStatus({ userId: senderId, isTyping }));
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="messageSeen — another user saw your message">
+    The server emits this event to your socket room when the recipient of one of your messages emits a `messageSeen` event. Use it to update the message status in your UI to `'seen'`.
+
+    **Payload**
+
+    ```json
+    {
+      "messageId": "msg_1716499200000_abc123def"
+    }
+    ```
+
+    | Field | Type | Description |
+    | --- | --- | --- |
+    | `messageId` | string | The `_id` of the message that was seen. |
+
+    **Example**
+
+    ```javascript
+    socket.on("messageSeen", ({ messageId }) => {
+      store.dispatch(updateMessageStatus({ messageId, status: "seen" }));
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="getOnlineUsers — current list of online user IDs">
+    The server broadcasts this event to **all** connected clients whenever any user connects or disconnects. It replaces the previous online users list entirely — you do not need to diff or merge it.
+
+    **Payload**
+
+    ```json
+    ["64a0f1b2c3d4e5f6a7b8c9d0", "64b1f2c3e4d5a6b7c8d9e0f1"]
+    ```
+
+    The payload is a plain `string[]` of user ID values for every currently connected user.
+
+    **Example**
+
+    ```javascript
+    socket.on("getOnlineUsers", (onlineUserIds) => {
+      store.dispatch(setOnlineUsers(onlineUserIds));
+    });
+    ```
+
+    <Note>
+      This event is emitted on every connection and disconnection, not just when the current user's presence changes. Your handler should replace the entire `onlineUsers` list in state rather than appending to it.
+    </Note>
+  </Accordion>
+</AccordionGroup>

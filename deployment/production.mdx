@@ -1,0 +1,121 @@
+---
+title: "Deploy ChatsPeCharcha to production"
+description: "How to deploy ChatsPeCharcha to production, covering the frontend Vercel deployment, backend Node.js hosting, and a complete pre-launch checklist."
+---
+
+Deploying ChatsPeCharcha to production involves two separate deployment targets: the React frontend published to a static hosting platform such as Vercel, and the Express backend running on a Node.js server. The two communicate over HTTPS, with the backend's `FRONTEND_URL` variable locking down which origin the CORS and Socket.io policies accept. Work through the sections below before you open the application to users.
+
+## Production build process
+
+Before deploying, you need a compiled frontend bundle. Run the following command from the `frontend/` directory:
+
+```bash
+npm run build
+```
+
+Vite compiles TypeScript, bundles all React components, and writes the output to `frontend/dist/`. The build is code-split into separate chunks for React internals and Radix UI components, which reduces the initial load time for users.
+
+## Frontend: deploy to Vercel
+
+The `frontend/` directory contains a `vercel.json` file that configures Vercel to support client-side routing:
+
+```json frontend/vercel.json
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+```
+
+This rewrite rule ensures that any URL — for example `/chat/123` — is served as `index.html` so React Router can handle the route on the client side, instead of Vercel returning a 404.
+
+To deploy the frontend, push your repository to GitHub and import the project in the [Vercel dashboard](https://vercel.com/new). When prompted, set the **root directory** to `frontend` and add your `VITE_API_BASE_URL` environment variable pointing to your production backend URL.
+
+## Backend: combined deployment with static serving
+
+If you prefer to keep everything on one server, set `NODE_ENV=production` on your backend host. When that variable is present, the Express server activates its static file middleware and serves the compiled frontend alongside the API:
+
+```js
+if (process.env.NODE_ENV === "production") {
+  // Serve compiled React assets
+  app.use(express.static(path.join(__dirname, "../frontend/dist")));
+
+  // Return index.html for all unmatched routes (SPA support)
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "../frontend", "dist", "index.html"));
+  });
+}
+```
+
+In this combined setup, your backend port serves both `/api/*` requests and the React application from the same origin, eliminating cross-origin concerns entirely.
+
+<Note>
+  When the frontend and backend are on different origins (for example, Vercel for the frontend and Render for the backend), `FRONTEND_URL` must be set to the **exact** Vercel deployment URL, including the scheme and without a trailing slash. A mismatch — such as `https://app.vercel.app` versus `https://app.vercel.app/` — causes the browser to block requests with a CORS error.
+</Note>
+
+## Production checklist
+
+Review each item before you launch:
+
+<AccordionGroup>
+  <Accordion title="Set a strong JWT_SECRET">
+    Your `JWT_SECRET` signs every authentication token. A weak or guessable secret allows attackers to forge tokens and impersonate any user.
+
+    Generate a secure value using Node.js:
+
+    ```bash
+    node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+    ```
+
+    Use the output as your `JWT_SECRET`. The value should be at least 32 characters long and must never be reused across environments.
+
+    <Warning>
+      Do not use a short, memorable string like `secret` or `mysecretkey` in production. If your JWT secret is compromised, all existing sessions are immediately at risk.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Configure MONGODB_URI with a production database">
+    Point `MONGODB_URI` at a dedicated production database, separate from any development or staging data. If you use MongoDB Atlas, restrict network access to the IP addresses of your backend server.
+
+    ```bash
+    MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.mongodb.net/chatspecharcha-prod
+    ```
+  </Accordion>
+
+  <Accordion title="Set FRONTEND_URL to your production domain">
+    Update `FRONTEND_URL` to the exact origin where your frontend is hosted. Both the Express CORS middleware and the Socket.io server use this value to decide which connections to accept.
+
+    ```bash
+    FRONTEND_URL=https://your-app.vercel.app
+    ```
+  </Accordion>
+
+  <Accordion title="Configure Cloudinary credentials for image uploads">
+    Profile picture uploads and image messages require valid Cloudinary credentials. Set all three variables using the values from your Cloudinary dashboard:
+
+    ```bash
+    CLOUDINARY_CLOUD_NAME=your-cloud-name
+    CLOUDINARY_API_KEY=your-api-key
+    CLOUDINARY_API_SECRET=your-api-secret
+    ```
+  </Accordion>
+
+  <Accordion title="Set up email credentials for verification">
+    Nodemailer uses a Gmail account to send verification and notification emails. Generate a Gmail app password rather than using your account password:
+
+    1. Go to your Google Account > **Security** > **2-Step Verification** > **App passwords**.
+    2. Create an app password for "Mail" and copy the generated value.
+
+    ```bash
+    EMAIL_USER=yourapp@gmail.com
+    EMAIL_PASS=your-16-character-app-password
+    ```
+  </Accordion>
+
+  <Accordion title="Enable HTTPS on your backend server">
+    All cookies set by the authentication system use `credentials: true` in CORS, which requires a secure context. Configure TLS on your backend server using a reverse proxy such as nginx or Caddy with a Let's Encrypt certificate. Serving the API over plain HTTP in production exposes session cookies to interception.
+  </Accordion>
+</AccordionGroup>

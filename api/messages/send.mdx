@@ -1,0 +1,109 @@
+---
+title: "Send a message to another user"
+description: "Send a text message, an image, or both to another user. The server persists the message to the database and delivers it in real time via Socket.io."
+---
+
+Use this endpoint to send a message to any other registered user. You supply the recipient's user ID as a path parameter and include a `text` field, a base64-encoded `image` field, or both in the request body. At least one of the two must be present. When the recipient is online, the server also emits a `newMessage` Socket.io event to their connected socket so they receive the message without polling.
+
+## Endpoint
+
+```
+POST /api/message/send/:id
+```
+
+## Authentication
+
+This endpoint requires a valid JWT. Pass the token in the `Authorization` header as a Bearer token.
+
+```
+Authorization: Bearer <token>
+```
+
+<Warning>
+  Requests without a valid Bearer token in the `Authorization` header are rejected with `401 Unauthorized`.
+</Warning>
+
+## Path parameters
+
+<ParamField path="id" type="string" required>
+  The MongoDB `_id` of the user you want to send the message to (the receiver).
+</ParamField>
+
+## Request body
+
+<ParamField body="text" type="string">
+  The text content of the message. Optional if `image` is provided.
+</ParamField>
+
+<ParamField body="image" type="string">
+  A base64-encoded image string. The server uploads the image to Cloudinary and stores the resulting URL. Optional if `text` is provided.
+</ParamField>
+
+## Response
+
+Returns the newly created message object.
+
+<ResponseField name="_id" type="string" required>
+  Unique identifier for the message document.
+</ResponseField>
+
+<ResponseField name="senderId" type="string" required>
+  MongoDB `_id` of the user who sent the message.
+</ResponseField>
+
+<ResponseField name="receiverId" type="string" required>
+  MongoDB `_id` of the user who received the message.
+</ResponseField>
+
+<ResponseField name="text" type="string">
+  The text content of the message. Present when a text value was supplied.
+</ResponseField>
+
+<ResponseField name="image" type="string">
+  The Cloudinary URL of the uploaded image. Present when an image was supplied.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 timestamp of when the message was created.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  ISO 8601 timestamp of the last update to the message document.
+</ResponseField>
+
+<Note>
+  In addition to the HTTP response, the server emits a `newMessage` Socket.io event directly to the receiver's socket if they are currently connected. This gives you real-time delivery without the receiver needing to poll this endpoint.
+</Note>
+
+## Example request
+
+```bash
+curl -X POST https://your-api.com/api/message/send/64b1f2c3e4d5a6b7c8d9e0f1 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-jwt-token" \
+  -d '{
+    "text": "Hey, are you free to chat?",
+    "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+  }'
+```
+
+## Example response
+
+```json
+{
+  "_id": "64c2e3d4f5e6b7c8d9e0f1a2",
+  "senderId": "64a0f1b2c3d4e5f6a7b8c9d0",
+  "receiverId": "64b1f2c3e4d5a6b7c8d9e0f1",
+  "text": "Hey, are you free to chat?",
+  "image": "https://res.cloudinary.com/demo/image/upload/v1234567890/sample.png",
+  "createdAt": "2024-07-16T14:30:00.000Z",
+  "updatedAt": "2024-07-16T14:30:00.000Z"
+}
+```
+
+## Error responses
+
+| Status | Description |
+| ------ | ----------- |
+| `401 Unauthorized` | No valid Bearer token was provided in the `Authorization` header. |
+| `500 Internal Server Error` | An unexpected error occurred on the server. |

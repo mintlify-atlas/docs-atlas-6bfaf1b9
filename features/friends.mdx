@@ -1,0 +1,69 @@
+---
+title: "Friends: Search users, send requests, and manage contacts"
+description: "Explains how to find other users by email, send and respond to friend requests, and how the friends list drives the contacts sidebar in ChatsPeCharcha."
+---
+
+ChatsPeCharcha uses a mutual friend system to control who can message whom. Before you can start a conversation with someone, one of you must send a friend request and the other must accept it. Once accepted, both users appear in each other's contacts sidebar and can exchange messages freely.
+
+## Searching for users
+
+You can find any registered user by their email address. The search is handled by the `searchUsers` endpoint, which performs a case-insensitive partial match against the `email` field and excludes your own account from results.
+
+Open the **Send Friend Request** dialog from the sidebar to search. As you type an email address, the server queries for matching users and returns their `fullName`, `email`, and `profilePic`.
+
+## Sending a friend request
+
+The **SendFriendRequestDialog** component lets you send a request directly by email address. You do not need to search first — typing the exact email and clicking **Send Friend Request** submits the request in one step.
+
+<Steps>
+  <Step title="Open the send request dialog">
+    In the sidebar, click the **Add Friend** button to open the **SendFriendRequestDialog**. You will see an email input field and a **Send Friend Request** button.
+  </Step>
+  <Step title="Enter the recipient's email">
+    Type the full email address of the person you want to add. The button remains disabled until you enter something.
+  </Step>
+  <Step title="Send the request">
+    Click **Send Friend Request**. The client posts `{ recipientEmail }` to the `POST /api/users/request` endpoint. The server looks up the recipient by email, validates that no pending or accepted request already exists between you, creates a `FriendRequest` document with status `pending`, and sends an email notification to the recipient.
+  </Step>
+  <Step title="Wait for acceptance">
+    The request appears in the recipient's pending requests list. You cannot message them until they accept.
+  </Step>
+</Steps>
+
+The server prevents duplicate requests. If a pending request already exists in either direction — or if you are already friends — it returns a descriptive error message rather than creating a duplicate.
+
+## Receiving and responding to requests
+
+When someone sends you a friend request, it appears in the **FriendRequestsDialog**, accessible from the sidebar. The dialog lists each pending request with the sender's avatar, name, and email.
+
+For each request you can:
+
+- **Accept** — Sets the `FriendRequest` status to `accepted` and adds each user to the other's `friends` array in the `User` model. The sender appears in your contacts sidebar immediately after you refresh.
+- **Reject** — Sets the `FriendRequest` status to `rejected`. The request is removed from your pending list and neither user is added to the other's friends array.
+
+After you act on a request, the `FriendRequestsDialog` closes and both the friends list and pending requests list refresh automatically via the `refetchFriends` and `refetchRequests` calls.
+
+## The friends list
+
+Your friends list is fetched from `GET /api/users/friends` when the dashboard loads. The endpoint queries all `FriendRequest` documents where `status` is `accepted` and the current user is either the `sender` or `recipient`, then maps each record to return the other user's profile data.
+
+The sidebar renders this list as your contacts. Each entry shows the contact's avatar, full name, and last message preview. Clicking an entry opens the conversation.
+
+<Note>
+You can only send messages to users who are in your friends list. The sidebar only shows accepted contacts, and the messaging endpoint is scoped to users you have a friendship with. If you want to chat with someone new, you must go through the friend request flow first.
+</Note>
+
+## Friend request data model
+
+```javascript
+// FriendRequest document shape (MongoDB)
+{
+  sender: ObjectId,      // User who sent the request
+  recipient: ObjectId,   // User who received the request
+  status: "pending" | "accepted" | "rejected",
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+A unique partial index on `{ sender, recipient }` with `status: "pending"` ensures that only one pending request can exist between any two users at a time.

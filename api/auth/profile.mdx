@@ -1,0 +1,182 @@
+---
+title: 'Profile endpoints — Check auth and update profile picture'
+description: 'Two protected endpoints: verify an active session and retrieve the current user, or upload a new profile picture via Cloudinary base64 upload.'
+---
+
+These two endpoints let authenticated users retrieve their own account data and update their profile picture. Both require a valid JWT issued by [POST /api/auth/login](/api/auth/login) or [POST /api/auth/signup](/api/auth/signup), passed as a Bearer token in the `Authorization` header.
+
+<Tabs>
+  <Tab title="GET /api/auth/checkAuth">
+
+    Verify that the current token is valid and retrieve the authenticated user's profile. This is useful for restoring session state on page load — call it on startup and use the response to hydrate your user store.
+
+    ```
+    GET /api/auth/checkAuth
+    ```
+
+    ### Authentication
+
+    Required. Include the JWT from login or signup as a Bearer token.
+
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    ### Request body
+
+    No request body is expected or required.
+
+    ### Response
+
+    Returns `200 OK` with the authenticated user's document (password field excluded).
+
+    <ResponseField name="_id" type="string" required>
+      MongoDB ObjectId for the user document.
+    </ResponseField>
+
+    <ResponseField name="fullName" type="string" required>
+      The user's registered display name.
+    </ResponseField>
+
+    <ResponseField name="email" type="string" required>
+      The user's email address.
+    </ResponseField>
+
+    <ResponseField name="profilePic" type="string" required>
+      URL of the user's current profile picture.
+    </ResponseField>
+
+    <ResponseField name="isVerified" type="boolean" required>
+      Whether the user's email address has been verified.
+    </ResponseField>
+
+    <ResponseField name="createdAt" type="string" required>
+      ISO 8601 timestamp of when the account was created.
+    </ResponseField>
+
+    <ResponseField name="updatedAt" type="string" required>
+      ISO 8601 timestamp of the most recent update to the user document.
+    </ResponseField>
+
+    ### Example
+
+    ```bash
+    curl -X GET https://your-api.com/api/auth/checkAuth \
+      -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    ```
+
+    ```json
+    {
+      "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+      "fullName": "Jane Doe",
+      "email": "jane@example.com",
+      "profilePic": "https://res.cloudinary.com/demo/image/upload/v1/avatars/jane.jpg",
+      "isVerified": false,
+      "createdAt": "2024-09-01T10:30:00.000Z",
+      "updatedAt": "2024-09-01T10:30:00.000Z"
+    }
+    ```
+
+    ### Error responses
+
+    | Status | Message | Cause |
+    |--------|---------|-------|
+    | `401` | `"Unauthorized - No Token Provided"` | The `Authorization` header is missing or does not contain a Bearer token. |
+    | `401` | `"Unauthorized - Invalid Token"` | The token signature is invalid or the token has expired. |
+    | `404` | `"User not found"` | The token is valid but the associated user no longer exists. |
+    | `500` | `"Internal Server Error"` | An unexpected server-side error occurred. |
+
+  </Tab>
+  <Tab title="PUT /api/auth/update-profile">
+
+    Upload a new profile picture for the authenticated user. You provide the image as a base64-encoded data URI, which the server uploads to Cloudinary. The user document is updated with the returned Cloudinary URL and the full updated user object is returned.
+
+    ```
+    PUT /api/auth/update-profile
+    ```
+
+    ### Authentication
+
+    Required. Include the JWT from login or signup as a Bearer token.
+
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    ### Request body
+
+    <ParamField body="profilePic" type="string" required>
+      A base64-encoded image data URI (e.g. `data:image/png;base64,iVBORw0KGgo...`). The server passes this directly to the Cloudinary uploader.
+    </ParamField>
+
+    <Warning>
+      Base64-encoded images can be large. Prefer compressing or resizing images client-side before encoding to avoid request timeouts and excessive Cloudinary bandwidth usage.
+    </Warning>
+
+    ### Response
+
+    Returns `200 OK` with the full updated user document (password field excluded).
+
+    <ResponseField name="_id" type="string" required>
+      MongoDB ObjectId for the user document.
+    </ResponseField>
+
+    <ResponseField name="fullName" type="string" required>
+      The user's registered display name.
+    </ResponseField>
+
+    <ResponseField name="email" type="string" required>
+      The user's email address.
+    </ResponseField>
+
+    <ResponseField name="profilePic" type="string" required>
+      The new Cloudinary URL for the uploaded profile picture.
+    </ResponseField>
+
+    <ResponseField name="isVerified" type="boolean" required>
+      Whether the user's email address has been verified.
+    </ResponseField>
+
+    <ResponseField name="createdAt" type="string" required>
+      ISO 8601 timestamp of when the account was created.
+    </ResponseField>
+
+    <ResponseField name="updatedAt" type="string" required>
+      ISO 8601 timestamp of this update.
+    </ResponseField>
+
+    ### Example
+
+    ```bash
+    curl -X PUT https://your-api.com/api/auth/update-profile \
+      -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+      -H "Content-Type: application/json" \
+      -d '{
+        "profilePic": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+      }'
+    ```
+
+    ```json
+    {
+      "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+      "fullName": "Jane Doe",
+      "email": "jane@example.com",
+      "profilePic": "https://res.cloudinary.com/demo/image/upload/v1/avatars/jane-new.jpg",
+      "isVerified": false,
+      "createdAt": "2024-09-01T10:30:00.000Z",
+      "updatedAt": "2024-09-15T14:22:00.000Z"
+    }
+    ```
+
+    ### Error responses
+
+    | Status | Message | Cause |
+    |--------|---------|-------|
+    | `400` | `"Profile pic is required"` | The `profilePic` field is missing from the request body. |
+    | `401` | `"Unauthorized - No Token Provided"` | The `Authorization` header is missing or does not contain a Bearer token. |
+    | `401` | `"Unauthorized - Invalid Token"` | The token signature is invalid or the token has expired. |
+    | `404` | `"User not found"` | The token is valid but the associated user no longer exists. |
+    | `500` | `"Internal server error"` | An unexpected server-side error occurred, including Cloudinary upload failures. |
+
+  </Tab>
+</Tabs>

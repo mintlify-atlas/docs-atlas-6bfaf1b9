@@ -1,0 +1,84 @@
+---
+title: "Environment variables reference for ChatsPeCharcha"
+description: "A complete reference for every environment variable used by the ChatsPeCharcha backend and frontend, including required values and example configurations."
+---
+
+ChatsPeCharcha reads its configuration entirely from environment variables, keeping sensitive credentials out of your source code. The backend requires a MongoDB connection string, a JWT secret, and a frontend origin for CORS; the frontend needs only a single variable pointing to the API. Before you start either server, copy the relevant example below into a `.env` file at the root of each package directory.
+
+<Warning>
+  Never commit `.env` files to version control. Add `.env` to your `.gitignore` to prevent accidentally exposing secrets such as `JWT_SECRET`, database credentials, and API keys.
+</Warning>
+
+<Tabs>
+  <Tab title="Backend">
+    The backend reads its `.env` file from the `backend/` directory. Create `backend/.env` before starting the server.
+
+    <ParamField path="PORT" type="number" default="5001">
+      The port the Express server listens on. Defaults to `5001` if not set.
+    </ParamField>
+
+    <ParamField path="MONGODB_URI" type="string" required>
+      The full MongoDB connection string, including database name and credentials. Accepts both local (`mongodb://localhost:27017/chatspecharcha`) and Atlas (`mongodb+srv://...`) URIs. The server exits immediately if this value is missing or the connection fails.
+    </ParamField>
+
+    <ParamField path="JWT_SECRET" type="string" required>
+      The secret key used to sign and verify JSON Web Tokens. Use a long, randomly generated string of at least 32 characters. Anyone who obtains this value can forge authentication tokens.
+    </ParamField>
+
+    <ParamField path="FRONTEND_URL" type="string" required>
+      The exact origin of your frontend application, for example `http://localhost:8080` in development or `https://your-app.vercel.app` in production. This value is passed directly to the Express CORS middleware and the Socket.io server; requests from any other origin are rejected.
+    </ParamField>
+
+    <ParamField path="CLOUDINARY_CLOUD_NAME" type="string">
+      Your Cloudinary cloud name, found on the Cloudinary dashboard. Required when users upload profile pictures or image attachments.
+    </ParamField>
+
+    <ParamField path="CLOUDINARY_API_KEY" type="string">
+      The API key for your Cloudinary account. Pair this with `CLOUDINARY_API_SECRET` to authenticate upload requests.
+    </ParamField>
+
+    <ParamField path="CLOUDINARY_API_SECRET" type="string">
+      The API secret for your Cloudinary account. Keep this value private — it grants full write access to your Cloudinary account.
+    </ParamField>
+
+    <ParamField path="EMAIL_USER" type="string">
+      The Gmail address used by Nodemailer to send verification and notification emails, for example `yourapp@gmail.com`.
+    </ParamField>
+
+    <ParamField path="EMAIL_PASS" type="string">
+      The Gmail app password for the account specified in `EMAIL_USER`. Generate an app password in your Google Account security settings rather than using your regular account password.
+    </ParamField>
+
+    <ParamField path="NODE_ENV" type="string" default="development">
+      The runtime environment. Set to `production` to enable static file serving of the built frontend from `../frontend/dist`. Accepts `development` or `production`.
+    </ParamField>
+
+    ```bash backend/.env
+    PORT=5001
+    MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/chatspecharcha
+    JWT_SECRET=your-very-long-random-secret-here
+    FRONTEND_URL=http://localhost:8080
+
+    CLOUDINARY_CLOUD_NAME=your-cloud-name
+    CLOUDINARY_API_KEY=your-api-key
+    CLOUDINARY_API_SECRET=your-api-secret
+
+    EMAIL_USER=yourapp@gmail.com
+    EMAIL_PASS=your-gmail-app-password
+
+    NODE_ENV=development
+    ```
+  </Tab>
+
+  <Tab title="Frontend">
+    The frontend reads its `.env` file from the `frontend/` directory. Vite only exposes variables prefixed with `VITE_` to the browser bundle.
+
+    <ParamField path="VITE_API_BASE_URL" type="string">
+      The base URL of the backend API, for example `http://localhost:5001` in development or `https://api.your-domain.com` in production. When this variable is not set, the Vite development server's built-in proxy forwards `/api/*` requests to `http://localhost:3000`, so you may omit it during local development.
+    </ParamField>
+
+    ```bash frontend/.env
+    VITE_API_BASE_URL=http://localhost:5001
+    ```
+  </Tab>
+</Tabs>

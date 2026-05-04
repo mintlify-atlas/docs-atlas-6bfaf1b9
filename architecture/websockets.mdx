@@ -1,0 +1,117 @@
+---
+title: 'WebSocket architecture and Socket.io events'
+description: 'Understand how ChatsPeCharcha uses Socket.io to deliver real-time messaging, typing indicators, read receipts, and online presence.'
+---
+
+ChatsPeCharcha uses Socket.io to maintain a persistent bidirectional connection between each browser tab and the Express server. This connection carries all real-time features — instant message delivery, typing indicators, read receipts, and online/offline presence — without polling. The server-side setup lives in `backend/src/lib/socket.js` and the client connects using the `socket.io-client` package in the frontend.
+
+## Server-side setup
+
+`lib/socket.js` creates the Express app, attaches a Node.js `http.Server`, then mounts a Socket.io `Server` on top of it:
+
+```js
+import { Server } from "socket.io";
+import http from "http";
+import express from "express";
+
+const app = express();
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: [
+      "http://localhost:8080",
+      "http://localhost:3000",
+      process.env.FRONTEND_URL
+    ].filter(Boolean),
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
+export { io, app, server };
+```
+
+All three exports are consumed by `index.js`, which attaches REST middleware and routes to `app` and calls `server.listen`.
+
+## Online user tracking with `userSocketMap`
+
+The server keeps an in-memory object that maps each authenticated user's ID to their current socket ID:
+
+```js
+const userSocketMap = {}; // { userId: socketId }
+
+export function getReceiverSocketId(userId) {
+  return userSocketMap[userId];
+}
+```
+
+When a client connects it passes its `userId` as a query parameter (`socket.handshake.query.userId`). The server writes the mapping, joins the socket to a room named after the user ID, and broadcasts the updated online user list to all clients. On disconnect the entry is deleted and the broadcast is repeated.
+
+<Note>
+  Each socket automatically joins a room named after the user's ID (`socket.join(userId)`). This means you can target a specific user with `io.to(userId).emit(...)` even if you only know their user ID — you do not need to look up the socket ID directly for room-based delivery.
+</Note>
+
+## Connection lifecycle
+
+<Steps>
+  <Step title="Client connects">
+    The frontend creates a Socket.io client connection and passes `userId` as a query parameter. The server reads `socket.handshake.query.userId`, stores `userSocketMap[userId] = socket.id`, and calls `socket.join(userId)`.
+  </Step>
+  <Step title="Online broadcast">
+    Immediately after updating the map, the server emits `getOnlineUsers` to all connected clients with the current list of online user IDs.
+  </Step>
+  <Step title="Events flow">
+    The socket remains open for the session, carrying message, typing, and read-receipt events in both directions.
+  </Step>
+  <Step title="Client disconnects">
+    The `disconnect` handler deletes `userSocketMap[userId]` and emits another `getOnlineUsers` broadcast so other clients remove the user from their online indicators.
+  </Step>
+</Steps>
+
+## Socket event reference
+
+### Client → server events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `sendMessage` | `{ senderId, receiverId, message, tempId }` | Send a chat message. Accepts an optional acknowledgement callback. |
+| `typing` | `{ receiverId, isTyping }` | Notify the receiver that the sender is typing or has stopped. |
+| `messageSeen` | `{ messageId, receiverId }` | Notify the sender that a message has been read. |
+
+### Server → client events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `receiveMessage` | `{ _id, senderId, receiverId, content, timestamp, status }` | Delivers a new message to the receiver's socket. |
+| `messageSent` | `{ ...messageObj, tempId }` | Confirms to the sender that the message was processed; includes the temporary client ID for reconciliation. |
+| `messageStatusUpdate` | `{ messageId, status, tempId }` | Tells the sender when a message transitions to `delivered`. |
+| `userTyping` | `{ senderId, isTyping, receiverId, timestamp }` | Forwards a typing indicator to the target user. |
+| `messageSeen` | `{ messageId }` | Tells the original sender that the receiver has read the message. |
+| `getOnlineUsers` | `string[]` | Broadcast to all clients whenever a user connects or disconnects; contains the full list of online user IDs. |
+
+## Connection handler code
+
+Below is the full connection handler from `lib/socket.js` showing how the server registers a socket, tracks it in `userSocketMap`, and sets up the disconnect cleanup:
+
+```js
+io.on("connection", (socket) => {
+  const userId = socket.handshake.query.userId;
+  if (userId) {
+    userSocketMap[userId] = socket.id;
+    socket.join(userId); // Join a room with userId
+  }
+
+  // Notify all clients about online users
+  io.emit("getOnlineUsers", Object.keys(userSocketMap));
+
+  // ... event handlers (sendMessage, typing, messageSeen) ...
+
+  socket.on("disconnect", () => {
+    if (userId) {
+      delete userSocketMap[userId];
+      io.emit("getOnlineUsers", Object.keys(userSocketMap));
+    }
+  });
+});
+```
